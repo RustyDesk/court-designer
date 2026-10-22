@@ -24123,7 +24123,7 @@
   var ewTurn = (north = 0) => north % 180 === 0 ? "0" : "90";
   var EW_SPORTS = ["basketballHalf", "futsal"];
   var TYPICAL_HEADING = { tennis: "North-South" };
-  var PB_PACK = { edge: 10, gapSide: 10, gapEnd: 12 };
+  var PB_PACK = { edgeSide: 5, edgeEnd: 8, gapSide: 10, gapEnd: 16 };
   var packPickleball = (rect) => {
     const s = SPORTS.pickleball.play;
     const tries = [0, 90].map((turn) => {
@@ -24131,8 +24131,10 @@
       const cw = turn === 0 ? s.w : s.l;
       const gx = turn === 0 ? PB_PACK.gapEnd : PB_PACK.gapSide;
       const gy = turn === 0 ? PB_PACK.gapSide : PB_PACK.gapEnd;
-      const nx = Math.max(0, Math.floor((rect.l - 2 * PB_PACK.edge + gx) / (cl + gx)));
-      const ny = Math.max(0, Math.floor((rect.w - 2 * PB_PACK.edge + gy) / (cw + gy)));
+      const mx = turn === 0 ? PB_PACK.edgeEnd : PB_PACK.edgeSide;
+      const my = turn === 0 ? PB_PACK.edgeSide : PB_PACK.edgeEnd;
+      const nx = Math.max(0, Math.floor((rect.l - 2 * mx + gx) / (cl + gx)));
+      const ny = Math.max(0, Math.floor((rect.w - 2 * my + gy) / (cw + gy)));
       return { turn, cl, cw, gx, gy, nx, ny, n: nx * ny };
     });
     const best = tries.sort((a, b) => b.n - a.n || a.turn - b.turn)[0];
@@ -24337,7 +24339,7 @@
     ]);
     return { edge, along: al.v, out: Math.max(0, ou.v), why: al.why || ou.why };
   };
-  var FENCE_OFF = 1.5;
+  var FENCE_OFF = 0;
   var GATE_WIDTHS = [3, 4, 5, 6, 8, 10, 12];
   var GATE_MAX = 6;
   var GATE_ACCESS = [
@@ -24609,8 +24611,9 @@
         const len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1);
         if (len < 3) return;
         const horiz = s.y1 === s.y2;
-        const side = horiz ? s.y1 < 0 ? "Top" : "Bottom" : s.x1 < 0 ? "Left" : "Right";
-        const o = horiz ? { x: 0, y: s.y1 < 0 ? -2.6 : 2.6 } : { x: s.x1 < 0 ? -2.6 : 2.6, y: 0 };
+        const top = horiz ? s.y1 < dims.w / 2 : s.x1 < dims.l / 2;
+        const side = horiz ? top ? "Top" : "Bottom" : top ? "Left" : "Right";
+        const o = horiz ? { x: 0, y: top ? -2.6 : 2.6 } : { x: top ? -2.6 : 2.6, y: 0 };
         T("fence", `f${i}`, `${side} fence run`, (s.x1 + s.x2) / 2 + o.x, (s.y1 + s.y2) / 2 + o.y, f(len));
         out[out.length - 1].value = len;
       });
@@ -26106,12 +26109,14 @@
         }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "mt-2", children: [
           "Courts are 20 x 44 ft, kept ",
-          PB_PACK.edge,
-          " ft from the surface edge, ",
+          PB_PACK.edgeSide,
+          " ft from the surface edge at the sides and ",
+          PB_PACK.edgeEnd,
+          " ft at the ends, ",
           PB_PACK.gapSide,
           " ft apart side to side and ",
           PB_PACK.gapEnd,
-          " ft apart end to end. Two tennis courts make six. These spacings are not confirmed yet. Check with ASBA/USAPA."
+          " ft apart end to end, the same as a pickleball pad. These spacings are not confirmed yet. Check with ASBA/USAPA."
         ] })
       ] })
     ] });
