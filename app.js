@@ -23959,11 +23959,11 @@
   };
   var WINDSCREENS = [
     { id: "black", name: "Black", hex: "#22262b" },
-    { id: "forest", name: "Forest Green", hex: "#2f5d46" },
-    { id: "navy", name: "Navy", hex: "#1b2a4a" },
-    { id: "gray", name: "Gray", hex: "#6b7280" },
-    { id: "tan", name: "Tan", hex: "#b8a57a" }
+    { id: "forest", name: "Dark Green", hex: "#2f5d46" }
   ];
+  var SCREEN_IDS = ["none", "custom", ...WINDSCREENS.map((w) => w.id)];
+  var screenHexOf = (fence) => fence.screen === "none" || fence.screen === "custom" ? null : (WINDSCREENS.find((w) => w.id === fence.screen) || {}).hex || null;
+  var screenName = (fence) => fence.screen === "none" ? "None" : fence.screen === "custom" ? `Custom color requested: ${fence.customScreen || "to be confirmed"} (not shown in the drawing)` : (WINDSCREENS.find((w) => w.id === fence.screen) || {}).name || "None";
   var OFF_SETS = () => ({
     tennis: { on: false, color: "#ffffff" },
     pickleball: { on: false, color: "#fda620" },
@@ -23995,10 +23995,14 @@
   var round5 = (v) => Math.round(v * 2) / 2;
   var MIN_ZONE = 10;
   var DEFAULT_DIVIDER = { on: false, kind: "fence", height: 6, orient: "across", pos: null, turnA: "auto", turnB: "auto" };
-  var FENCE_HEIGHTS = [6, 8];
+  var FENCE_HEIGHTS = [6, 8, 10, 12];
   var DIVIDER_HEIGHTS = FENCE_HEIGHTS;
-  var PERMIT_HEIGHT = 8;
+  var PERMIT_HEIGHT = 10;
   var PERMIT_NOTE = "A fence this tall requires a permit. Check with your city before installation.";
+  var permitText = (fence, divider) => [
+    fence && fence.on && fence.height >= PERMIT_HEIGHT ? `${fence.height} ft perimeter fence` : null,
+    divider && divider.on && divider.kind === "fence" && divider.height >= PERMIT_HEIGHT ? `${divider.height} ft divider fence` : null
+  ].filter(Boolean);
   var permitItems = (fence, divider) => [
     fence && fence.on && fence.height >= PERMIT_HEIGHT ? "perimeter fence" : null,
     divider && divider.on && divider.kind === "fence" && divider.height >= PERMIT_HEIGHT ? "divider fence" : null
@@ -24169,23 +24173,23 @@
         if (convert && id === "tennis") {
           const pk = packPickleball(z);
           if (pk.courts.length) {
-            pk.courts.forEach((pc, i) => all.push({ ...pc, key: `${z.key}-pickleball-${i}`, zone: z.key, zoneLabel: z.label, rect: z, color: src.tennis.color, converted: true }));
+            pk.courts.forEach((pc, i) => all.push({ ...pc, key: `${z.key}-pickleball-${i}`, zone: z.key, zoneLabel: z.label, rect: z, color: src.tennis.color, converted: true, area: src.pickleball && src.pickleball.area }));
             return;
           }
         }
         const o = setOpts(src[id]);
         const turnPref = !split && o && o.turn === 90 ? 90 : pref;
-        const first = { ...placeCourt(z, id, turnPref, split, o), key: `${z.key}-${id}`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !!o.flip, noMid: !!o.noMid, noSides: !!o.noSides, surface: src[id].surface };
+        const first = { ...placeCourt(z, id, turnPref, split, o), key: `${z.key}-${id}`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !!o.flip, noMid: !!o.noMid, noSides: !!o.noSides, surface: src[id].surface, area: src[id].area };
         all.push(first);
         if (o.twin && id === "basketballHalf") {
-          const tw = { ...placeCourt(z, id, first.turn, split, twinOpts(o, first.turn)), key: `${z.key}-${id}-twin`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !o.flip, twin: true, noMid: !!o.noMid, noSides: !!o.noSides, surface: src[id].surface };
+          const tw = { ...placeCourt(z, id, first.turn, split, twinOpts(o, first.turn)), key: `${z.key}-${id}-twin`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !o.flip, twin: true, noMid: !!o.noMid, noSides: !!o.noSides, surface: src[id].surface, area: src[id].area };
           if (first.x0 < tw.x0 + tw.l - 1e-6 && tw.x0 < first.x0 + first.l - 1e-6 && first.y0 < tw.y0 + tw.w - 1e-6 && tw.y0 < first.y0 + first.w - 1e-6) tw.fits = false;
           all.push(tw);
         }
         const extra = !split && Array.isArray(src[id].copies) ? src[id].copies : [];
         extra.forEach((cp, i) => {
           const co = setOpts(cp);
-          all.push({ ...placeCourt(z, id, co.turn === 90 ? 90 : pref, false, co), key: `${z.key}-${id}-c${i + 1}`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !!co.flip, noMid: !!co.noMid, noSides: !!co.noSides, copy: i + 1, surface: cp.surface });
+          all.push({ ...placeCourt(z, id, co.turn === 90 ? 90 : pref, false, co), key: `${z.key}-${id}-c${i + 1}`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !!co.flip, noMid: !!co.noMid, noSides: !!co.noSides, copy: i + 1, surface: cp.surface, area: src[id].area });
         });
       });
     });
@@ -24207,6 +24211,7 @@
     pickleNet: { kind: "fixed", name: "Pickleball net", sport: "pickleball", span: 22 },
     volleyNet: { kind: "fixed", name: "Volleyball net", sport: "volleyball", span: 32.8 },
     led: { kind: "flex", name: "LED lighting pole", max: 8, edges: SIDES, typical: [3, 12], ref: null, outsideFence: true },
+    led2: { kind: "flex", name: "LED pole, two fixtures", plural: "LED poles, two fixtures", max: 8, edges: SIDES, typical: [3, 12], ref: null, outsideFence: true, fixtures: 2 },
     goal: { kind: "flex", name: "Basketball goal", max: 4, edges: SIDES, typical: [4, 10], ref: ["basketball", "basketballHalf"] },
     futsalGoal: { kind: "flex", name: "Futsal goal", max: 4, edges: SIDES, typical: [1, 4], ref: ["futsal"], half: 4.9 },
     /* Site furniture drawn as a footprint that runs parallel to the court side it sits beside.
@@ -24214,6 +24219,7 @@
     bench: { kind: "flex", name: "Bench", plural: "Benches", max: 8, edges: SIDES, typical: [3, 10], ref: null, shape: { len: 7, depth: 1.5, fill: "#c8a46e" }, defEdge: "south" },
     practiceWall: { kind: "flex", name: "Practice wall", plural: "Practice walls", max: 2, edges: SIDES, typical: [4, 20], ref: null, shape: { len: 20, depth: 1, fill: "#9aa3b2" }, defEdge: "north", defFrac: 0.5 }
   };
+  var SHADE = { len: 12, depth: 8 };
   var AUTO_GOAL = { goal: ["basketball", "basketballHalf"], futsalGoal: ["futsal"] };
   var goalTypeFor = (sportId) => Object.keys(AUTO_GOAL).find((t) => AUTO_GOAL[t].includes(sportId)) || null;
   var ACCESSORIES = Object.fromEntries(
@@ -24419,7 +24425,7 @@
     return out;
   }
   var canvasPad = (fence, gates, flex = []) => {
-    const poles = flex.some((p) => p.type === "led") ? Math.ceil(FENCE_OFF + 7) : 0;
+    const poles = flex.some((p) => p.type === "led" || p.type === "led2") ? Math.ceil(FENCE_OFF + 7) : 0;
     return Math.max(poles, gatePad(fence, gates));
   };
   var gatePad = (fence, gates) => {
@@ -24611,6 +24617,57 @@
     }
     return out;
   }
+  var AREA_SHAPES = {
+    pickleball: { x: 15, y: 0, width: 14, height: 20 },
+    volleyball: { x: 19.66, y: 0, width: 19.68, height: 29.5 }
+  };
+  var AREA_LABELS = { pickleball: "Kitchen (no-volley zone)", volleyball: "Front zone" };
+  var PAD_SPORTS = {
+    tennis: { edge: 12, end: 21, gap: 24, endGap: 42 },
+    pickleball: { edge: 5, end: 8, gap: 10, endGap: 16 }
+  };
+  var PAD_COUNTS = [1, 2, 3, 4, 6];
+  var padConfig = (id, set) => {
+    const P = PAD_SPORTS[id];
+    const pad = set && set.pad || {};
+    return { across: !!(set && set.turn === 90), cols: pad.cols === 2 ? 2 : 1, gap: typeof pad.gap === "number" ? pad.gap : P.gap, endGap: typeof pad.endGap === "number" ? pad.endGap : P.endGap };
+  };
+  var padSize = (id, n, cfg) => {
+    const P = PAD_SPORTS[id];
+    const c = SPORTS[id].play;
+    const cols = n >= 4 && n % 2 === 0 && cfg.cols === 2 ? 2 : 1;
+    const rows = n / cols;
+    const long = cols * c.l + (cols - 1) * cfg.endGap + 2 * P.end;
+    const short = rows * c.w + (rows - 1) * cfg.gap + 2 * P.edge;
+    return { cols, rows, long, short, dims: cfg.across ? { l: short, w: long } : { l: long, w: short } };
+  };
+  var padPlan = (id, n, cfg, keepLong = null, oldCopies = []) => {
+    const P = PAD_SPORTS[id];
+    const c = SPORTS[id].play;
+    const along = (v) => Math.round(v * 2) / 2;
+    const clear = { turn: void 0, px: void 0, py: void 0, ax: void 0, ay: void 0, inset: void 0, flip: void 0 };
+    const sz = padSize(id, n, cfg);
+    const long = Math.max(sz.long, keepLong || 0);
+    const dims = cfg.across ? { l: sz.short, w: long } : { l: long, w: sz.short };
+    const pad = { gap: cfg.gap, endGap: cfg.endGap, cols: sz.cols };
+    if (n === 1) return { dims, parent: { ...clear, ...cfg.across ? { turn: 90 } : {}, pad }, copies: [] };
+    const block = sz.cols * c.l + (sz.cols - 1) * cfg.endGap;
+    const off = (long - block) / 2;
+    const spots = [];
+    for (let j = 0; j < sz.rows; j++) {
+      for (let i = 0; i < sz.cols; i++) {
+        const a = off + i * (c.l + cfg.endGap);
+        const b = P.edge + j * (c.w + cfg.gap);
+        spots.push(cfg.across ? { px: along(b), py: along(a) } : { px: along(a), py: along(b) });
+      }
+    }
+    const keep = (i) => oldCopies[i] && oldCopies[i].surface ? { surface: oldCopies[i].surface } : {};
+    return {
+      dims,
+      parent: { ...clear, ...cfg.across ? { turn: 90 } : {}, ...spots[0], pad },
+      copies: spots.slice(1).map((pt, i) => ({ ...cfg.across ? { turn: 90 } : {}, ...pt, ...keep(i) }))
+    };
+  };
   var mainRects = (layout, dims, fallback) => {
     const mainCs = layout.mainId && !layout.split ? layout.courts.filter((c) => c.sport === layout.mainId && c.zone === "all") : [];
     if (mainCs.length > 1 && !layout.courts.some((c) => c.converted)) {
@@ -24671,6 +24728,9 @@
       goals: flexPlaced.filter((p) => p.type === "goal").length,
       futsalGoals: flexPlaced.filter((p) => p.type === "futsalGoal").length,
       poles: flexPlaced.filter((p) => p.type === "led").length,
+      poles2: flexPlaced.filter((p) => p.type === "led2").length,
+      shades: flexPlaced.filter((p) => p.shade).length,
+      scorekeepers: nets.filter((n) => n.score).length,
       benches: flexPlaced.filter((p) => p.type === "bench").length,
       practiceWalls: flexPlaced.filter((p) => p.type === "practiceWall").length,
       nets: nets.length
@@ -24698,8 +24758,11 @@
     if (q.goals) rows.push(["Basketball goals", `${q.goals}`]);
     if (q.futsalGoals) rows.push(["Futsal goals", `${q.futsalGoals}`]);
     if (q.poles) rows.push(["LED lighting poles", `${q.poles}`]);
+    if (q.poles2) rows.push(["LED lighting poles, two fixtures", `${q.poles2}`]);
     if (q.benches) rows.push(["Benches", `${q.benches}`]);
     if (q.practiceWalls) rows.push(["Practice walls", `${q.practiceWalls}`]);
+    if (q.shades) rows.push(["Bench shade structures", `${q.shades}`]);
+    if (q.scorekeepers) rows.push(["Digital scorekeepers (net mounted)", `${q.scorekeepers}`]);
     if (q.nets) rows.push(["Nets", `${q.nets}`]);
     return rows;
   }
@@ -24772,6 +24835,8 @@
           if (cp.length) o[id].copies = cp;
         }
         if (s && s.turn === 90) o[id].turn = 90;
+        if (s && typeof s.area === "string" && HEX.test(s.area) && AREA_SHAPES[id]) o[id].area = s.area.toLowerCase();
+        if (s && s.pad && typeof s.pad === "object" && PAD_SPORTS[id]) o[id].pad = { gap: numIn(s.pad.gap, 0, 100, PAD_SPORTS[id].gap), endGap: numIn(s.pad.endGap, 0, 200, PAD_SPORTS[id].endGap), cols: s.pad.cols === 2 ? 2 : 1 };
         if (s && typeof s.surface === "string" && HEX.test(s.surface)) o[id].surface = s.surface.toLowerCase();
         if (s && typeof s.px === "number") o[id].px = numIn(s.px, 0, 1e3, 0);
         if (s && typeof s.py === "number") o[id].py = numIn(s.py, 0, 1e3, 0);
@@ -24814,7 +24879,7 @@
     const placed = (Array.isArray(p.placed) ? p.placed : []).filter((x) => x && ACCESSORIES[x.type] && ACCESSORIES[x.type].kind === "flex").filter((x) => (counts[x.type] = (counts[x.type] || 0) + 1) <= ACCESSORIES[x.type].max).map((x, i) => {
       const uid = numIn(x.uid, 1, 1e9, 1e3 + i);
       maxUid = Math.max(maxUid, uid);
-      return { uid, type: x.type, edge: oneOf(x.edge, SIDES, "north"), along: numIn(x.along, 0, MAX, 0), out: numIn(x.out, 0, MAX, 0), auto: boolOr(x.auto, false), ...typeof x.court === "string" ? { court: x.court.slice(0, 60) } : {} };
+      return { uid, type: x.type, edge: oneOf(x.edge, SIDES, "north"), along: numIn(x.along, 0, MAX, 0), out: numIn(x.out, 0, MAX, 0), auto: boolOr(x.auto, false), ...x.type === "bench" && x.shade === true ? { shade: true } : {}, ...typeof x.court === "string" ? { court: x.court.slice(0, 60) } : {} };
     });
     const fx = p.fixedOn || {};
     const mv = p.meas || {};
@@ -24871,11 +24936,13 @@
         divider,
         gates,
         placed,
-        fixedOn: { tennisNet: boolOr(fx.tennisNet, true), pickleNet: boolOr(fx.pickleNet, false), volleyNet: boolOr(fx.volleyNet, false) },
+        fixedOn: { tennisNet: boolOr(fx.tennisNet, true), pickleNet: boolOr(fx.pickleNet, false), volleyNet: boolOr(fx.volleyNet, false), scorekeeper: boolOr(fx.scorekeeper, false) },
         fence: {
           on: boolOr(fc.on, false),
           height: oneOf(fc.height, FENCE_HEIGHTS, 6),
-          screen: oneOf(fc.screen, ["none", "match", ...WINDSCREENS.map((w) => w.id)], "match")
+          /* older projects saved other colors: they open as black */
+          screen: oneOf(fc.screen, SCREEN_IDS, "black"),
+          customScreen: strOr(fc.customScreen, 60)
         },
         notes: strOr(p.notes, 600),
         convert: boolOr(p.convert, false),
@@ -25187,6 +25254,7 @@
             const t = courtTransform(c);
             return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-bball-areas": c.key, transform: t, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketAreas, { half: c.sport === "basketballHalf", bball }) }, `b${c.key}`);
           }),
+          courts.filter((c) => c.area && AREA_SHAPES[c.sport]).map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-area": c.key, transform: courtTransform(c), stroke: "none", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { ...AREA_SHAPES[c.sport], fill: c.area }) }, `a${c.key}`)),
           courts.map((c) => {
             const Markings = MARKINGS[c.sport];
             const sc = c.scale || 1;
@@ -25264,7 +25332,18 @@
           layout.split && !overlay && layout.zones.map((z) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { x: z.x + z.l / 2, y: z.y + 3.4, text: zoneText(z), size: 2 * k }, z.key)),
           nets.map((n, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { "data-net": n.id, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: n.x1, y1: n.y1, x2: n.x2, y2: n.y2, stroke: "#0f172a", strokeWidth: "0.45" }),
-            [[n.x1, n.y1], [n.x2, n.y2]].map(([x, y]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: x, cy: y, r: "0.7", fill: "#e5e7eb", stroke: "#0f172a", strokeWidth: "0.25" }, `${x}-${y}`))
+            [[n.x1, n.y1], [n.x2, n.y2]].map(([x, y]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: x, cy: y, r: "0.7", fill: "#e5e7eb", stroke: "#0f172a", strokeWidth: "0.25" }, `${x}-${y}`)),
+            n.score && (() => {
+              const vert = n.x1 === n.x2;
+              const cx = n.x1 + (vert ? 0 : Math.sign(n.x1 - n.x2) * 2.2);
+              const cy = n.y1 + (vert ? Math.sign(n.y1 - n.y2) * 2.2 : 0);
+              const w = vert ? 1.8 : 2.8;
+              const h = vert ? 2.8 : 1.8;
+              return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { "data-scorekeeper": "1", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: cx - w / 2, y: cy - h / 2, width: w, height: h, rx: "0.2", fill: "#1f2937", stroke: "#323c61", strokeWidth: "0.25" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: cx - w / 2 + 0.25, y: cy - h / 2 + 0.25, width: w - 0.5, height: h - 0.5, rx: "0.1", fill: "#8fe0b0" })
+              ] });
+            })()
           ] }, `${n.id}-${i}`)),
           flexPlaced.map((p) => {
             const d = DIR[p.edge];
@@ -25275,8 +25354,10 @@
               const hz = p.edge === "north" || p.edge === "south";
               const rw = hz ? shape.len : shape.depth;
               const rh = hz ? shape.depth : shape.len;
+              const sh = p.shade ? { w: hz ? SHADE.len : SHADE.depth, h: hz ? SHADE.depth : SHADE.len } : null;
               return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { "data-flex": p.uid, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: x - rw / 2, y: y - rh / 2, width: rw, height: rh, fill: shape.fill, stroke: "#323c61", strokeWidth: "0.35", rx: "0.2" }),
+                sh && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { "data-shade": p.uid, x: x - sh.w / 2, y: y - sh.h / 2, width: sh.w, height: sh.h, rx: "0.8", fill: "#236e45", fillOpacity: "0.28", stroke: "#236e45", strokeWidth: "0.35", strokeDasharray: "1 0.6" }),
                 p.type === "practiceWall" && !mOn && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { x: x + (hz ? 0 : 4), y: y + (hz ? 3 : 0), text: "Practice wall", size: 1.7 * k }),
                 p.offTypical && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: x - rw / 2 - 0.6, y: y - rh / 2 - 0.6, width: rw + 1.2, height: rh + 1.2, fill: "none", stroke: "#b45309", strokeWidth: "0.3", strokeDasharray: "0.6 0.4" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Handle, { kind: "flex", id: p.uid, x, y, label: `${ACCESSORIES[p.type].name}: drag to move` })
@@ -25293,6 +25374,12 @@
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: x, y1: y, x2: ex, y2: ey, strokeWidth: isGoal ? 0.5 : 0.7 }),
               isGoal && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: ex - d.y * half, y1: ey + d.x * half, x2: ex + d.y * half, y2: ey - d.x * half, strokeWidth: "0.8" }),
+              ACCESSORIES[p.type].fixtures === 2 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: ex - d.y * 1.8, y1: ey + d.x * 1.8, x2: ex + d.y * 1.8, y2: ey - d.x * 1.8, stroke: "#f1f5f9", strokeWidth: "1.3", strokeLinecap: "round" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: ex - d.y * 1.8, y1: ey + d.x * 1.8, x2: ex + d.y * 1.8, y2: ey - d.x * 1.8, stroke: "#323c61", strokeWidth: "0.5" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: ex - d.y * 1.8, cy: ey + d.x * 1.8, r: "0.9", fill: "#f2d450", stroke: "#323c61", strokeWidth: "0.25" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: ex + d.y * 1.8, cy: ey - d.x * 1.8, r: "0.9", fill: "#f2d450", stroke: "#323c61", strokeWidth: "0.25" })
+              ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: x, cy: y, r: isGoal ? 1 : 1.1, fill: isGoal ? "#c0392b" : "#f2d450", stroke: "#f1f5f9", strokeWidth: "0.25" }),
               p.offTypical && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: x, cy: y, r: "1.8", fill: "none", stroke: "#b45309", strokeWidth: "0.3", strokeDasharray: "0.6 0.4" }),
               isGoal && p.out >= 1.5 && !mOn && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { x: x + d.x * p.out * 0.5 - d.y * 2.2, y: y + d.y * p.out * 0.5 + d.x * 2.2, text: f(p.out), size: 1.7 * k }),
@@ -25329,7 +25416,7 @@
           })(),
           permits.length > 0 && (() => {
             const size = 1.9 * k;
-            const text = `PERMIT REQUIRED: ${permits.length > 1 ? "8 ft fences" : permits[0] === "divider fence" ? "8 ft divider fence" : "8 ft fence"}`;
+            const text = `PERMIT REQUIRED: ${permitText(fence, dv).join(" and ")}`;
             const w = text.length * size * 0.6 + size * 1.2;
             return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { "data-permit": "true", pointerEvents: "none", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: 1.2, y: 1.2, width: w, height: size * 1.6, rx: size * 0.25, fill: "#fef3c7", stroke: "#b45309", strokeWidth: "0.2" }),
@@ -25445,16 +25532,32 @@
             },
             h
           )) }),
-          fence.height >= PERMIT_HEIGHT && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PermitNotice, { what: "8 ft chain-link fence" })
+          fence.height >= PERMIT_HEIGHT && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PermitNotice, { what: `${fence.height} ft chain-link fence` })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-2 text-sm font-semibold text-[#323c61]", children: "Windscreen color" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-wrap gap-2", children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Dot, { id: "none", name: "None", children: "None" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Dot, { id: "match", name: "Match perimeter border", hex: border }),
-            WINDSCREENS.map((w) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Dot, { id: w.id, name: w.name, hex: w.hex }, w.id))
+            WINDSCREENS.map((w) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Dot, { id: w.id, name: w.name, hex: w.hex }, w.id)),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Dot, { id: "custom", name: "Custom color request", children: "Custom" })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-2 text-xs text-slate-500", children: fence.screen === "none" ? "No windscreen" : fence.screen === "match" ? "Matches the perimeter border" : WINDSCREENS.find((w) => w.id === fence.screen)?.name })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-2 text-xs text-slate-500", children: fence.screen === "none" ? "No windscreen" : fence.screen === "custom" ? "Custom color requested" : WINDSCREENS.find((w) => w.id === fence.screen)?.name }),
+          fence.screen === "custom" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "mt-2 block text-xs text-slate-600", children: [
+            "Color to request",
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                type: "text",
+                maxLength: 60,
+                value: fence.customScreen || "",
+                "aria-label": "Custom windscreen color",
+                placeholder: "For example: burgundy",
+                onChange: (e) => patch({ customScreen: e.target.value }),
+                className: "mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "mt-1 block text-slate-500", children: "Written on the proposal only. The drawing does not change." })
+          ] })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FencePreview, { height: fence.height, color: screenHex }),
         lengths && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "mt-2 text-xs text-slate-600", "data-testid": "fence-length", children: [
@@ -25511,7 +25614,7 @@
       ] })
     ] });
   }
-  function SurfacesPanel({ layout, main, setMain, border, setBorder, bball, setBball, sets = null, setSets = null }) {
+  function SurfacesPanel({ layout, main, setMain, border, setBorder, bball, setBball, sets = null, setSets = null, setZoneSets = null }) {
     const hasBball = layout.courts.some((c) => BBALL_SPORTS.includes(c.sport));
     const blank = !!layout.slab && !!sets;
     const slab = sets && sets.blank || {};
@@ -25554,6 +25657,28 @@
           ] }, c.key))
         ] });
       })(),
+      sets && Object.keys(AREA_SHAPES).filter((id) => layout.courts.some((c) => c.sport === id)).map((id) => {
+        const cur = layout.courts.find((c) => c.sport === id && c.area);
+        const setArea = (hex) => {
+          const v = hex || void 0;
+          const put = (st) => ({ ...st, [id]: { ...st[id], area: v } });
+          setSets(put);
+          if (setZoneSets) setZoneSets((z) => ({ A: put(z.A), B: put(z.B) }));
+        };
+        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mb-6", "data-testid": `area-${id}`, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: [
+            SPORTS[id].name,
+            " ",
+            AREA_LABELS[id].toLowerCase(),
+            " color (optional)"
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "mb-2 text-xs text-slate-500", children: [
+            id === "pickleball" ? "The kitchen is 7 ft on each side of the net." : "The front zone sits between the two attack lines, 3 m on each side of the center line.",
+            " Default leaves it the same as the court around it."
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ColorRow, { label: `${SPORTS[id].name} ${AREA_LABELS[id].toLowerCase()}`, options: MASTER_PALETTE, value: cur ? cur.area : null, allowDefault: true, size: "h-6 w-6", onChange: setArea })
+        ] }, id);
+      }),
       hasBball && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mb-6", "data-testid": "bball-colors", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: "Basketball court colors" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mb-3 text-xs text-slate-500", children: "Paint any area of the basketball court its own surface color. Default leaves it the same as the surface around it." }),
@@ -25888,57 +26013,70 @@
       ] })
     ] });
   }
-  var TENNIS_BAND = 60;
-  var tennisSlabPlan = (n, across, dims, oldCopies = []) => {
-    const c = SPORTS.tennis.play;
-    const b = TENNIS_BAND;
-    const along = (v) => Math.round(v * 2) / 2;
-    const clear = { turn: void 0, px: void 0, py: void 0, ax: void 0, ay: void 0, inset: void 0, flip: void 0 };
-    if (!across) {
-      const l = Math.max(dims.l, 120);
-      const x = along((l - c.l) / 2);
-      const y0 = along((b - c.w) / 2);
-      return {
-        dims: { l, w: b * n },
-        parent: n > 1 ? { ...clear, py: y0 } : clear,
-        copies: Array.from({ length: n - 1 }, (_, i) => ({ px: x, py: y0 + b * (i + 1), ...oldCopies[i] && oldCopies[i].surface ? { surface: oldCopies[i].surface } : {} }))
-      };
-    }
-    const w = Math.max(dims.w, 120);
-    const y = along((w - c.l) / 2);
-    const x0 = along((b - c.w) / 2);
-    return {
-      dims: { l: b * n, w },
-      parent: { ...clear, turn: 90, ...n > 1 ? { px: x0 } : {} },
-      copies: Array.from({ length: n - 1 }, (_, i) => ({ turn: 90, px: x0 + b * (i + 1), py: y, ...oldCopies[i] && oldCopies[i].surface ? { surface: oldCopies[i].surface } : {} }))
-    };
-  };
   var TENNIS_SIZES = [[1, "1 tennis court", { l: 120, w: 60 }], [2, "2 tennis courts", { l: 120, w: 120 }]];
-  function TennisSlabPanel({ layout, sets, dims, onSet }) {
-    const count = layout.courts.filter((c) => c.sport === "tennis" && !c.converted && c.zone === "all").length || 1;
-    const across = sets.tennis.turn === 90;
-    const preset = (n) => across ? { l: TENNIS_BAND * n, w: 120 } : { l: 120, w: TENNIS_BAND * n };
-    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mb-6", "data-testid": "tennis-slab", children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: "Tennis courts on this slab" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-wrap gap-1", role: "group", "aria-label": "Number of tennis courts on the slab", children: [1, 2, 3].map((n) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", "aria-pressed": count === n, onClick: () => onSet(n, across), className: chip(count === n), children: [
+  function CourtPadPanel({ sportId, layout, sets, onSet }) {
+    const set = sets[sportId] || {};
+    const cfg = padConfig(sportId, set);
+    const name = SPORTS[sportId].name.toLowerCase();
+    const count = layout.courts.filter((c) => c.sport === sportId && !c.converted && c.zone === "all").length || 1;
+    const sz = (n) => padSize(sportId, n, cfg).dims;
+    const P = PAD_SPORTS[sportId];
+    const twoWide = count >= 4 && count % 2 === 0;
+    const cols = twoWide && cfg.cols === 2 ? 2 : 1;
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mb-6", "data-testid": "court-pad", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: [
+        SPORTS[sportId].name,
+        " courts on this pad"
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-wrap gap-1", role: "group", "aria-label": `Number of ${name} courts on the pad`, children: PAD_COUNTS.map((n) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", "aria-pressed": count === n, onClick: () => onSet(sportId, n, {}), className: chip(count === n), children: [
         n,
         " court",
         n === 1 ? "" : "s",
         " (",
-        preset(n).w,
+        sz(n).w,
         " x ",
-        preset(n).l,
+        sz(n).l,
         " ft)"
       ] }, n)) }),
-      count > 1 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap items-center gap-1", role: "group", "aria-label": "How the courts are stacked on the slab", children: [
+      count > 1 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap items-center gap-1", role: "group", "aria-label": "How the courts sit on the pad", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "mr-1 text-xs text-slate-600", children: "Courts sit" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": !across, onClick: () => onSet(count, false), className: chip(!across), children: "Top to bottom" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": across, onClick: () => onSet(count, true), className: chip(across), children: "Side by side" })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": !cfg.across, onClick: () => onSet(sportId, count, { across: false }), className: chip(!cfg.across), children: "Top to bottom" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": cfg.across, onClick: () => onSet(sportId, count, { across: true }), className: chip(cfg.across), children: "Side by side" })
+      ] }),
+      twoWide && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap items-center gap-1", role: "group", "aria-label": "Courts in a line or two wide", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "mr-1 text-xs text-slate-600", children: "Layout" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": cols === 1, onClick: () => onSet(sportId, count, { cols: 1 }), className: chip(cols === 1), children: "In a line" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": cols === 2, onClick: () => onSet(sportId, count, { cols: 2 }), className: chip(cols === 2), children: "Two wide" })
+      ] }),
+      count > 1 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 flex flex-col gap-2 text-xs text-slate-600", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex items-center justify-between gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Space between courts" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex items-center gap-1", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumField, { label: "Space between courts", value: cfg.gap, min: 0, max: 100, step: 0.5, onCommit: (v) => onSet(sportId, count, { gap: v }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "ft" })
+          ] })
+        ] }),
+        cols === 2 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex items-center justify-between gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Space between the two ends" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex items-center gap-1", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumField, { label: "Space between the two ends", value: cfg.endGap, min: 0, max: 200, step: 0.5, onCommit: (v) => onSet(sportId, count, { endGap: v }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "ft" })
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", onClick: () => onSet(sportId, count, { gap: P.gap, endGap: P.endGap }), className: "self-start text-xs font-semibold text-[#236e45] underline-offset-2 hover:underline", children: [
+          "Use the standard spacing (",
+          P.gap,
+          " ft",
+          cols === 2 ? `, ${P.endGap} ft` : "",
+          ")"
+        ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "mt-2 text-xs text-slate-500", children: [
-        "Each court sits in its own ",
-        TENNIS_BAND,
-        " ft section, centered, so there are 24 ft between courts. Each gets its own net. You can still drag or resize any court afterward."
+        "Each court keeps its regulation size, centered in its own section of the pad, with ",
+        P.edge,
+        " ft to the edge at the sides and ",
+        P.end,
+        " ft at the ends. Each gets its own net. The spacing is not confirmed yet. Check with ASBA/USAPA. You can still drag or resize any court afterward."
       ] })
     ] });
   }
@@ -26055,7 +26193,7 @@
             h,
             " ft"
           ] }, h)) }),
-          divider.height >= PERMIT_HEIGHT && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PermitNotice, { what: "8 ft divider fence" })
+          divider.height >= PERMIT_HEIGHT && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PermitNotice, { what: `${divider.height} ft divider fence` })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mb-3", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: "Direction" }),
@@ -26330,26 +26468,48 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mb-5", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: "Nets" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mb-2 text-xs text-slate-500", children: "These snap to the center of each court of that sport. They cannot be moved." }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-col gap-1", children: fixedIds.map((id) => {
-          const reason = netStatus(id, courts);
-          const n = netSegments(id, courts).length;
-          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded border border-slate-300 px-3 py-2", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: `flex items-center gap-2 text-sm ${reason ? "text-slate-400" : ""}`, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                "input",
-                {
-                  type: "checkbox",
-                  disabled: !!reason,
-                  checked: !!fixedOn[id] && !reason,
-                  onChange: (e) => setFixedOn((s) => ({ ...s, [id]: e.target.checked })),
-                  className: "h-4 w-4 accent-[#236e45]"
-                }
-              ),
-              ACCESSORIES[id].name
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: reason ?? (n > 1 ? `Snapped to the center of ${n} courts` : "Snapped to center") })
-          ] }, id);
-        }) })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-col gap-1", children: [
+          fixedIds.map((id) => {
+            const reason = netStatus(id, courts);
+            const n = netSegments(id, courts).length;
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded border border-slate-300 px-3 py-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: `flex items-center gap-2 text-sm ${reason ? "text-slate-400" : ""}`, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    type: "checkbox",
+                    disabled: !!reason,
+                    checked: !!fixedOn[id] && !reason,
+                    onChange: (e) => setFixedOn((s) => ({ ...s, [id]: e.target.checked })),
+                    className: "h-4 w-4 accent-[#236e45]"
+                  }
+                ),
+                ACCESSORIES[id].name
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: reason ?? (n > 1 ? `Snapped to the center of ${n} courts` : "Snapped to center") })
+            ] }, id);
+          }),
+          (() => {
+            const anyNet = fixedIds.some((id) => fixedOn[id] && !netStatus(id, courts));
+            const nNets = fixedIds.filter((id) => fixedOn[id] && !netStatus(id, courts)).reduce((t, id) => t + netSegments(id, courts).length, 0);
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded border border-slate-300 px-3 py-2", "data-testid": "scorekeeper-option", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: `flex items-center gap-2 text-sm ${anyNet ? "" : "text-slate-400"}`, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    type: "checkbox",
+                    disabled: !anyNet,
+                    checked: !!fixedOn.scorekeeper && anyNet,
+                    onChange: (e) => setFixedOn((s) => ({ ...s, scorekeeper: e.target.checked })),
+                    className: "h-4 w-4 accent-[#236e45]"
+                  }
+                ),
+                "Digital scorekeeper"
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: anyNet ? `Mounted on a net post, just outside the court, on each net (${nNets}). It follows the net.` : "Turn on a net first. The scorekeeper mounts to the net post." })
+            ] });
+          })()
+        ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: "Goals, poles, benches and practice wall" }),
@@ -26380,6 +26540,14 @@
                 ] })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-2 flex flex-wrap gap-1", role: "group", "aria-label": `${a.name} ${i + 1} side`, children: a.edges.map((e) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": p.edge === e, onClick: () => onPatch(p.uid, { edge: e }), className: chip(p.edge === e), children: SIDE_LABEL[e] }, e)) }),
+              type === "bench" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "mt-2 flex items-center gap-2 text-xs text-slate-700", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!p.shade, "aria-label": `Bench ${i + 1} shade structure`, onChange: (e) => onPatch(p.uid, { shade: e.target.checked ? true : void 0 }), className: "h-4 w-4 accent-[#236e45]" }),
+                "Shade structure over this bench (",
+                SHADE.len,
+                " x ",
+                SHADE.depth,
+                " ft roof)"
+              ] }),
               p.ok ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
                 [
                   ["Along the side", "along", p.b.aMin, p.b.aMax],
@@ -26450,14 +26618,16 @@
       counts[p.type] = (counts[p.type] || 0) + 1;
       return {
         name: `${ACCESSORIES[p.type].name} ${counts[p.type]}`,
-        detail: `${SIDE_LABEL[p.edge]}, ${fmtLen(p.along, u)} along the side, ${fmtLen(p.out, u)} setback from the court` + (p.offTypical ? ` (${usualNote(p)}: Master Systems to confirm)` : "")
+        detail: `${SIDE_LABEL[p.edge]}, ${fmtLen(p.along, u)} along the side, ${fmtLen(p.out, u)} setback from the court` + (p.shade ? `, with a ${fmtLen(SHADE.len, u)} x ${fmtLen(SHADE.depth, u)} shade structure` : "") + (p.offTypical ? ` (${usualNote(p)}: Master Systems to confirm)` : "")
       };
     });
     const fixed = fixedActive.map((id) => {
       const n = nets.filter((x) => x.id === id).length;
       return { name: ACCESSORIES[id].name, detail: n > 1 ? `Centered in each of ${n} courts` : "Centered on the court" };
     });
-    const windscreen = fence.screen === "none" ? "None" : fence.screen === "match" ? `Matches perimeter border (${hexName(border, MASTER_PALETTE)})` : WINDSCREENS.find((w) => w.id === fence.screen)?.name;
+    const scoreCount = nets.filter((n) => n.score).length;
+    if (scoreCount) fixed.push({ name: "Digital scorekeeper", detail: `${scoreCount} mounted on a net post, just outside the court${scoreCount > 1 ? ", one per net" : ""}` });
+    const windscreen = screenName(fence);
     const liveGates = fence.on ? gates : [];
     const lengths = fenceLengths(dims, fence, liveGates, divider);
     const checks = [
@@ -26496,7 +26666,11 @@
       colors: {
         main: color(main, "surface"),
         border: color(border, "surface"),
-        basketball: layout.courts.some((c) => BBALL_SPORTS.includes(c.sport)) ? BBALL_REGIONS.filter((r) => bball && bball[r.id]).map((r) => ({ label: r.label, color: color(bball[r.id], "surface") })) : []
+        basketball: layout.courts.some((c) => BBALL_SPORTS.includes(c.sport)) ? BBALL_REGIONS.filter((r) => bball && bball[r.id]).map((r) => ({ label: r.label, color: color(bball[r.id], "surface") })) : [],
+        areas: Object.keys(AREA_SHAPES).map((id) => {
+          const hexes = [...new Set(layout.courts.filter((c) => c.sport === id && c.area).map((c) => c.area))];
+          return hexes.length ? { label: `${SPORTS[id].name}: ${AREA_LABELS[id].toLowerCase()}`, color: color(hexes[0], "surface") } : null;
+        }).filter(Boolean)
       },
       zones: layout.split ? layout.zones.map((z) => ({ label: z.label, size: `${r1(z.w)} x ${r1(z.l)} ft` })) : null,
       divider: divider.on ? {
@@ -26519,7 +26693,7 @@
       accessories: { fixed, flexible },
       fencing: fence.on ? {
         height: fence.height,
-        permit: permitItems(fence, divider),
+        permit: permitText(fence, divider),
         windscreen,
         windscreenHex: screenHex,
         perimeterFt: lengths.perimeter,
@@ -26577,7 +26751,7 @@
     const flex = spec.accessories.flexible.map((a) => row(a.name, esc(a.detail))).join("");
     const accessories = fixed + flex || row("Accessories", "None selected");
     const f = spec.fencing;
-    const fencing = f ? row("Enclosure", `${f.height} ft chain-link`) + (f.permit.length ? row("Permit", `Required: ${f.permit.join(" and ")} at 8 ft. ${PERMIT_NOTE}`) : "") + row("Windscreen", f.windscreenHex ? sw({ name: f.windscreen, hex: f.windscreenHex }) : esc(f.windscreen)) + row("Approx. fence run", `${f.totalFt} linear ft (perimeter ${f.perimeterFt} ft, less gate openings, plus divider fence; final layout set at site survey)`) : row("Enclosure", "None selected");
+    const fencing = f ? row("Enclosure", `${f.height} ft chain-link`) + (f.permit.length ? row("Permit", `Required: ${f.permit.join(" and ")}. ${PERMIT_NOTE}`) : "") + row("Windscreen", f.windscreenHex ? sw({ name: f.windscreen, hex: f.windscreenHex }) : esc(f.windscreen)) + row("Approx. fence run", `${f.totalFt} linear ft (perimeter ${f.perimeterFt} ft, less gate openings, plus divider fence; final layout set at site survey)`) : row("Enclosure", "None selected");
     const css = `
   *{box-sizing:border-box}body{margin:0;font-family:'Avenir Next','Segoe UI',system-ui,sans-serif;color:#1e293b;background:#f1f5f9;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .page{max-width:860px;margin:0 auto;background:#fff}
@@ -26614,7 +26788,7 @@ ${sec(
       row("Main sport", esc(spec.sport)) + row("Overall surface", `${spec.dims.width} x ${spec.dims.length} ft`) + row("Coated area", `${spec.dims.area.toLocaleString("en-US")} sq ft`) + row("ASBA recommended surface", `${spec.recommended.w} x ${spec.recommended.l} ft`)
     )}
 ${sec("Substrate", row("Foundation", esc(spec.substrate.name)) + spec.substrate.notes.map((n) => row("Preparation", esc(n))).join(""))}
-${sec("Surface colors", row("Main court surface", sw(spec.colors.main)) + row("Perimeter border", sw(spec.colors.border)) + spec.colors.basketball.map((b) => row(`Basketball: ${b.label}`, sw(b.color))).join("") + row("About these colors", esc(`${COLOR_NOTES.surface} ${COLOR_NOTES.line} ${COLOR_NOTES.chart}`)))}
+${sec("Surface colors", row("Main court surface", sw(spec.colors.main)) + row("Perimeter border", sw(spec.colors.border)) + spec.colors.basketball.map((b) => row(`Basketball: ${b.label}`, sw(b.color))).join("") + spec.colors.areas.map((b) => row(b.label, sw(b.color))).join("") + row("About these colors", esc(`${COLOR_NOTES.surface} ${COLOR_NOTES.line} ${COLOR_NOTES.chart}`)))}
 ${spec.zones ? sec("Zones and divider", spec.zones.map((z) => row(z.label, esc(z.size))).join("") + row("Divider", esc(`${spec.divider.kind === "net" ? "Net" : `${spec.divider.height} ft fence`}, ${spec.divider.positionFt} ft from the ${spec.divider.direction.startsWith("Left") ? "left" : "top"}`))) : ""}
 ${sec("Line configuration", row("North", esc(`Toward the ${spec.north} of the drawing`)) + (spec.lines.length ? spec.lines.map((l) => row(`${l.zone ? `${l.zone}: ` : ""}${l.sport} lines`, sw(l.color) + esc(` runs ${l.heading}${l.custom ? `, customer-specified size ${l.sizeText} (${l.scaled}% of regulation, not regulation)` : ""}`))).join("") : row("Lines", "None selected")))}
 ${sec("Accessories", accessories)}
@@ -26729,7 +26903,7 @@ ${spec.site ? sec("Jobsite", siteRows(spec.site, row)) : ""}
 ${row("Project", esc(projectName || "Untitled"))}${address ? row("Jobsite", esc(address)) : ""}
 ${row("Surface", `${spec.dims.width} x ${spec.dims.length} ft (${spec.dims.area.toLocaleString("en-US")} sq ft)`)}
 ${row("Foundation", esc(spec.substrate.name))}${row("North", esc(`Toward the ${spec.north} of the sheet`))}${row("Scale", esc(scale))}${row("Sheet type", crew ? "Crew sheet, dimensioned" : "Customer rendering")}</table></section>
-<section><h2>Colors</h2><table>${row("Main court surface", sw(spec.colors.main))}${row("Perimeter border", sw(spec.colors.border))}${lines}${spec.colors.basketball.map((b) => row(`Basketball: ${b.label}`, sw(b.color))).join("")}</table>
+<section><h2>Colors</h2><table>${row("Main court surface", sw(spec.colors.main))}${row("Perimeter border", sw(spec.colors.border))}${lines}${spec.colors.basketball.map((b) => row(`Basketball: ${b.label}`, sw(b.color))).join("")}${spec.colors.areas.map((b) => row(b.label, sw(b.color))).join("")}</table>
 <p class="m">${esc(`${COLOR_NOTES.line} ${COLOR_NOTES.chart}`)}</p></section>
 ${acc || gates ? `<section><h2>Accessories and gates</h2><table>${acc}${gates}</table></section>` : ""}
 <section><h2>Field notes</h2><p><strong>${esc(STAMP)}</strong>${spec.notes ? "<br>" + esc(spec.notes).replace(/\n/g, "<br>") : ""}</p></section>
@@ -27039,6 +27213,7 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { k: "Main court surface", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Dot, { c: spec.colors.main }) }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { k: "Perimeter border", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Dot, { c: spec.colors.border }) }),
                 spec.colors.basketball.map((b) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { k: `Basketball: ${b.label}`, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Dot, { c: b.color }) }, b.label)),
+                spec.colors.areas.map((b) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { k: b.label, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Dot, { c: b.color }) }, b.label)),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { k: "About these colors", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "text-xs text-slate-600", children: [
                   COLOR_NOTES.surface,
                   " ",
@@ -27083,7 +27258,7 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
                 spec.fencing.permit.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Row, { k: "Permit", children: [
                   "Required: ",
                   spec.fencing.permit.join(" and "),
-                  " at 8 ft. ",
+                  ". ",
                   PERMIT_NOTE
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Row, { k: "Windscreen", children: spec.fencing.windscreenHex ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Dot, { c: { name: spec.fencing.windscreen, hex: spec.fencing.windscreenHex } }) : spec.fencing.windscreen }),
@@ -27598,7 +27773,7 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
       zoneSets: JSON.parse(JSON.stringify(DEFAULT_ZONE_SETS)),
       divider: { ...DEFAULT_DIVIDER },
       fence: { ...like.fence },
-      fixedOn: { tennisNet: true, pickleNet: id === "pickleball", volleyNet: false },
+      fixedOn: { tennisNet: true, pickleNet: id === "pickleball", volleyNet: false, scorekeeper: false },
       placed: autoGoals(id, { x: 0, y: 0, l: o.l, w: o.w }, "auto", nextUid),
       gates: [],
       notes: "",
@@ -27611,10 +27786,10 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
     const layout = computeLayout({ dims: d.dims, divider: d.divider, sets: effSets, zoneSets: d.zoneSets, convert: d.convert, mainId: d.sportId });
     const courts = layout.courts;
     const fixedActive = Object.keys(ACCESSORIES).filter((id) => ACCESSORIES[id].kind === "fixed" && d.fixedOn[id] && !netStatus(id, courts));
-    const nets = fixedActive.flatMap((id) => netSegments(id, courts).map((n) => ({ id, ...n })));
+    const nets = fixedActive.flatMap((id) => netSegments(id, courts).map((n) => ({ id, ...n, score: !!d.fixedOn.scorekeeper })));
     const flexPlaced = d.placed.map((p) => resolveFlex(p, d.dims, courts, playOf(sport, d.dims), d.fence.on)).filter((p) => p.ok);
     const gates = d.gates.map((g) => resolveGate(g, d.dims));
-    const screenHex = d.fence.screen === "none" ? null : d.fence.screen === "match" ? d.border : WINDSCREENS.find((w) => w.id === d.fence.screen)?.hex;
+    const screenHex = screenHexOf(d.fence);
     return { dims: d.dims, layout, fallback: playOf(sport, d.dims), main: d.main, border: d.border, bball: d.bball, north: d.north, fence: d.fence, screenHex, nets, flexPlaced, gates, meas: null };
   }
   function arrangeBoxes(boxes, mode, gap) {
@@ -27964,8 +28139,8 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
     const [tool, setTool] = (0, import_react.useState)(null);
     const [notes, setNotes] = (0, import_react.useState)("");
     const [meas, setMeas] = (0, import_react.useState)(DEFAULT_MEAS);
-    const [fence, setFence] = (0, import_react.useState)({ on: false, height: 6, screen: "match" });
-    const [fixedOn, setFixedOn] = (0, import_react.useState)({ tennisNet: true, pickleNet: false, volleyNet: false });
+    const [fence, setFence] = (0, import_react.useState)({ on: false, height: 6, screen: "black", customScreen: "" });
+    const [fixedOn, setFixedOn] = (0, import_react.useState)({ tennisNet: true, pickleNet: false, volleyNet: false, scorekeeper: false });
     const [convert, setConvert] = (0, import_react.useState)(false);
     const [courtsList, setCourtsList] = (0, import_react.useState)([{ id: 1, name: "Court 1", design: null }]);
     const [activeCourt, setActiveCourt] = (0, import_react.useState)(1);
@@ -28227,11 +28402,11 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
       if (staleAuto) setPlaced((list) => list.filter((p) => !p.auto || autoLive(p)));
     }, [staleAuto]);
     const courts = layout.courts;
-    const screenHex = fence.screen === "none" ? null : fence.screen === "match" ? border : WINDSCREENS.find((w) => w.id === fence.screen)?.hex;
+    const screenHex = screenHexOf(fence);
     const fixedActive = Object.keys(ACCESSORIES).filter(
       (id) => ACCESSORIES[id].kind === "fixed" && fixedOn[id] && !netStatus(id, courts)
     );
-    const nets = fixedActive.flatMap((id) => netSegments(id, courts).map((n) => ({ id, ...n })));
+    const nets = fixedActive.flatMap((id) => netSegments(id, courts).map((n) => ({ id, ...n, score: !!fixedOn.scorekeeper })));
     const placements = placed.map((p) => resolveFlex(p, dims, courts, playOf(sport, dims), fence.on));
     const flexPlaced = placements.filter((p) => p.ok);
     const resolvedGates = gates.map((g) => resolveGate(g, dims));
@@ -28279,7 +28454,7 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
       const item = placements.find((x) => x.uid === uid);
       if (!item || placed.filter((x) => x.type === item.type).length >= ACCESSORIES[item.type].max) return;
       const along = item.ok ? item.along + 5 <= item.b.aMax ? item.along + 5 : item.along - 5 : item.along;
-      setPlaced((list) => [...list, { uid: nextId.current++, type: item.type, edge: item.edge, along, out: item.out }]);
+      setPlaced((list) => [...list, { uid: nextId.current++, type: item.type, edge: item.edge, along, out: item.out, ...item.shade ? { shade: true } : {} }]);
     };
     const copyZone = (from, to) => {
       setZoneSets((z) => ({ ...z, [to]: JSON.parse(JSON.stringify(z[from])) }));
@@ -28440,13 +28615,18 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
       [next[i], next[j]] = [next[j], next[i]];
       return next;
     });
-    const setTennisCourts = (n, across) => {
-      const base2 = across !== (sets.tennis.turn === 90) ? { l: 120, w: 120 } : dims;
-      const plan = tennisSlabPlan(n, across, base2, sets.tennis.copies || []);
+    const setCourtPad = (id, n, patch) => {
+      const cur = padConfig(id, sets[id]);
+      const cfg = { ...cur, ...patch };
+      const now = layout.courts.filter((c) => c.sport === id && !c.converted && c.zone === "all").length || 1;
+      const prevLong = padSize(id, now, cur).long;
+      const dimLong = cur.across ? dims.w : dims.l;
+      const keepLong = now > 1 && cfg.across === cur.across && dimLong > prevLong + 0.01 ? dimLong : null;
+      const plan = padPlan(id, n, cfg, keepLong, sets[id].copies || []);
       setLock(false);
       setDims(plan.dims);
-      setSets((s) => ({ ...s, tennis: { ...s.tennis, on: true, ...plan.parent, copies: plan.copies.length ? plan.copies : void 0 } }));
-      setFixedOn((f) => ({ ...f, tennisNet: true }));
+      setSets((s) => ({ ...s, [id]: { ...s[id], on: true, ...plan.parent, copies: plan.copies.length ? plan.copies : void 0 } }));
+      setFixedOn((f) => ({ ...f, [id === "tennis" ? "tennisNet" : "pickleNet"]: true }));
     };
     const toggleConvert = (on) => {
       setConvert(on);
@@ -28701,7 +28881,7 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
                         }
                       )
                     ] }),
-                    sportId === "tennis" && !divider.on && !convert && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(TennisSlabPanel, { layout, sets, dims, onSet: setTennisCourts }),
+                    PAD_SPORTS[sportId] && !divider.on && !convert && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CourtPadPanel, { sportId, layout, sets, onSet: setCourtPad }),
                     (convert || layout.all.some((c) => c.sport === "tennis")) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "border-t border-slate-200 pt-5", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ConvertPanel, { convert, onToggle: toggleConvert, layout, dims, setDims }) }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "border-t border-slate-200 pt-5", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DividerPanel, { divider, setDivider, dims, layout, tool, setTool, onCopyZone: copyZone, onSwapZones: swapZones, zoneSets, onZoneSport: setZoneSport, north }) }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "border-t border-slate-200 pt-5", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DirectionPanel, { layout, north, setNorth: changeNorth }) })
@@ -28736,7 +28916,7 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", { className: "inline-block h-3.5 w-3.5 rounded-full border border-black/20", style: { background: main } }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("i", { className: "mr-1 inline-block h-3.5 w-3.5 rounded-full border border-black/20", style: { background: border } }),
                     hexName(main, MASTER_PALETTE)
-                  ] }), open: !!folds.surfaces, onToggle: toggleFold, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SurfacesPanel, { layout, main, setMain, border, setBorder, bball, setBball, sets, setSets }) }),
+                  ] }), open: !!folds.surfaces, onToggle: toggleFold, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SurfacesPanel, { layout, main, setMain, border, setBorder, bball, setBball, sets, setSets, setZoneSets }) }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Fold, { id: "lines", title: "Court lines", summary: layout.drawn.length ? layout.drawn.map((id) => SPORTS[id].name).join(", ") : "None", open: !!folds.lines, onToggle: toggleFold, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(LinesPanel, { layout, divider, sportId, sets, setSets, zoneSets, setZoneSets, onGoals: addBaselineGoals, north }) }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Fold, { id: "fence", title: "Fencing and enclosure", summary: fence.on ? `${fence.height} ft${fence.height >= PERMIT_HEIGHT ? ", permit" : ""}` : "None", open: !!folds.fence, onToggle: toggleFold, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EnclosureModule, { fence, setFence, border, screenHex, lengths }) }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Fold, { id: "gates", title: "Gates and access", summary: resolvedGates.length ? String(resolvedGates.length) : "None", open: !!folds.gates, onToggle: toggleFold, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GatePanel, { fence, gates: resolvedGates, dims, onAdd: () => addGate(), onPatch: patchGate, onRemove: removeGate, onDuplicate: duplicateGate, tool, setTool }) }),
@@ -28843,7 +29023,7 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
                   ["Accessories", accessorySummary],
                   [
                     "Enclosure",
-                    fence.on ? `${fence.height} ft chain-link${screenHex ? ", windscreen" : ""}` : "None"
+                    fence.on ? `${fence.height} ft chain-link${screenHex ? ", windscreen" : fence.screen === "custom" ? ", custom windscreen requested" : ""}` : "None"
                   ]
                 ].map(([k, v]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("dt", { className: "text-[11px] font-medium uppercase tracking-wide text-slate-500", children: k }),
