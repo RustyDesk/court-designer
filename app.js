@@ -23939,7 +23939,7 @@
     { name: "Purple", hex: "#222849" },
     { name: "Red", hex: "#81382e" },
     { name: "Gray", hex: "#7f8183" }
-  ].map((c) => ({ ...c, kind: "Plexipave surface (textured)", onChart: true }));
+  ].map((c) => ({ ...c, kind: "Plexipave surface (textured)", onChart: true })).concat([{ name: "Existing Concrete", hex: "#a8a7a2", kind: "Existing concrete slab (not coated)", onChart: false }]);
   var MASTER_PALETTE = SURFACE_COLORS;
   var LINE_COLORS = [
     { name: "White", hex: "#ffffff", onChart: false },
@@ -23952,7 +23952,7 @@
     { name: "Black", hex: "#05090c", onChart: true }
   ].map((c) => ({ ...c, kind: "Plexipave line paint (flat)" }));
   var COLOR_NOTES = {
-    surface: "Plexipave surface colors are sampled from a scan of the textured chips. The grain reads a little darker and duller on screen than the flat color.",
+    surface: "Plexipave surface colors are sampled from a scan of the textured chips. The grain reads a little darker and duller on screen than the flat color. Existing Concrete is the bare slab, not a coating, and its screen color is assumed.",
     line: "Line paint is a separate product. It is flat and glossy, so it looks brighter than a surface of the same name (the line Green is not the surface Green).",
     white: "White and Textured White are on the chart without a chip, so their screen colors are assumed.",
     chart: "Chips on the chart may vary from the actual product. Confirm against a physical sample."
@@ -27820,6 +27820,1095 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
       h: rowH.reduce((a, v) => a + v, 0) + gap * Math.max(0, rowH.length - 1)
     };
   }
+  var V3 = {
+    sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+    cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]],
+    dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+    norm: (a) => {
+      const l = Math.hypot(a[0], a[1], a[2]) || 1;
+      return [a[0] / l, a[1] / l, a[2] / l];
+    }
+  };
+  var mat4Mul = (a, b) => {
+    const o = new Float32Array(16);
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+      let s = 0;
+      for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k];
+      o[c * 4 + r] = s;
+    }
+    return o;
+  };
+  var mat4Persp = (fovy, aspect, n, f) => {
+    const t = 1 / Math.tan(fovy / 2);
+    const o = new Float32Array(16);
+    o[0] = t / aspect;
+    o[5] = t;
+    o[10] = (f + n) / (n - f);
+    o[11] = -1;
+    o[14] = 2 * f * n / (n - f);
+    return o;
+  };
+  var mat4Look = (eye, c, up) => {
+    const z = V3.norm(V3.sub(eye, c));
+    const x = V3.norm(V3.cross(up, z));
+    const y = V3.cross(z, x);
+    return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -V3.dot(x, eye), -V3.dot(y, eye), -V3.dot(z, eye), 1]);
+  };
+  var SUN_DIR = V3.norm([0.55, 0.78, 0.42]);
+  var APRON_Y = -0.3;
+  var rgba = (hex, a = 1) => {
+    const h = String(hex || "#808080").replace("#", "");
+    const n = h.length === 3 ? h.split("").map((x) => x + x).join("") : h.padEnd(6, "0");
+    return [parseInt(n.slice(0, 2), 16) / 255, parseInt(n.slice(2, 4), 16) / 255, parseInt(n.slice(4, 6), 16) / 255, a];
+  };
+  var NET_3D = {
+    tennisNet: { post: 3.5, top: 3, drop: 2.9 },
+    pickleNet: { post: 3, top: 2.83, drop: 2.7 },
+    volleyNet: { post: 8.5, top: 7.97, drop: 3.3 }
+  };
+  var SceneBuilder = class {
+    constructor() {
+      this.m = { solid: [], glass: [], glow: [] };
+      this.sh = [];
+      this.cx = 0;
+      this.cz = 0;
+      this.c = 1;
+      this.s = 0;
+      this.hl = 0;
+      this.hw = 0;
+    }
+    court(cx, cz, rot, l, w) {
+      const a = rot * Math.PI / 180;
+      this.cx = cx;
+      this.cz = cz;
+      this.c = Math.cos(a);
+      this.s = Math.sin(a);
+      this.hl = l / 2;
+      this.hw = w / 2;
+    }
+    /* a point on the pad (feet from its top left corner) to a point in the scene */
+    W(lx, lz) {
+      const dx = lx - this.hl;
+      const dz = lz - this.hw;
+      return [this.cx + dx * this.c - dz * this.s, this.cz + dx * this.s + dz * this.c];
+    }
+    N(nx, ny, nz) {
+      return [nx * this.c - nz * this.s, ny, nx * this.s + nz * this.c];
+    }
+    tri(group, p, nrm, col, cast) {
+      const g = this.m[group];
+      for (let i = 0; i < 3; i++) g.push(p[i][0], p[i][1], p[i][2], nrm[i][0], nrm[i][1], nrm[i][2], col[0], col[1], col[2], col[3]);
+      if (cast && group === "solid") {
+        this.sh.push(...p.flatMap((q) => {
+          const t = q[1] / SUN_DIR[1];
+          return [q[0] - SUN_DIR[0] * t, 0.03, q[2] - SUN_DIR[2] * t];
+        }));
+      }
+    }
+    quad(group, p, col, cast, ctr) {
+      let n = V3.norm(V3.cross(V3.sub(p[1], p[0]), V3.sub(p[3], p[0])));
+      if (group === "glow") n = [0, 0, 0];
+      else if (ctr) {
+        const fc = [(p[0][0] + p[2][0]) / 2, (p[0][1] + p[2][1]) / 2, (p[0][2] + p[2][2]) / 2];
+        if (V3.dot(n, V3.sub(fc, ctr)) < 0) n = [-n[0], -n[1], -n[2]];
+      }
+      const N = [n, n, n];
+      this.tri(group, [p[0], p[1], p[2]], N, col, cast);
+      this.tri(group, [p[0], p[2], p[3]], N, col, cast);
+    }
+    /* A box standing on the pad: center (lx, lz), size sx along its own x and sz along its own z, turned by rot degrees */
+    box(lx, lz, y0, sx, sz, h, rot, col, o = {}) {
+      const r = rot * Math.PI / 180;
+      const cr = Math.cos(r);
+      const sr = Math.sin(r);
+      const hx = sx / 2;
+      const hz = sz / 2;
+      const k = [[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz]].map(([ax, az]) => this.W(lx + ax * cr - az * sr, lz + ax * sr + az * cr));
+      const y1 = y0 + h;
+      const cw = this.W(lx, lz);
+      const ctr = [cw[0], y0 + h / 2, cw[1]];
+      const g = o.group || "solid";
+      const cast = o.cast !== false;
+      for (let i = 0; i < 4; i++) {
+        const a = k[i];
+        const b = k[(i + 1) % 4];
+        this.quad(g, [[a[0], y0, a[1]], [b[0], y0, b[1]], [b[0], y1, b[1]], [a[0], y1, a[1]]], col, cast, ctr);
+      }
+      this.quad(g, k.map((q) => [q[0], y1, q[1]]), col, cast, ctr);
+    }
+    /* A round post or pole, optionally tapered */
+    cyl(lx, lz, y0, y1, r0, r12, col, o = {}) {
+      const seg = o.seg || 10;
+      const g = o.group || "solid";
+      const cast = o.cast !== false;
+      const ring = (r, y) => Array.from({ length: seg }, (_, i) => {
+        const a = i / seg * Math.PI * 2;
+        const q = this.W(lx + Math.cos(a) * r, lz + Math.sin(a) * r);
+        return [q[0], y, q[1]];
+      });
+      const b = ring(r0, y0);
+      const t = ring(r12, y1);
+      const nv = (i) => {
+        const a = i / seg * Math.PI * 2;
+        return g === "glow" ? [0, 0, 0] : this.N(Math.cos(a), 0, Math.sin(a));
+      };
+      for (let i = 0; i < seg; i++) {
+        const j = (i + 1) % seg;
+        this.tri(g, [b[i], b[j], t[j]], [nv(i), nv(j), nv(j)], col, cast);
+        this.tri(g, [b[i], t[j], t[i]], [nv(i), nv(j), nv(i)], col, cast);
+      }
+      if (o.cap !== false) {
+        const c0 = this.W(lx, lz);
+        const top = [c0[0], y1, c0[1]];
+        const up = g === "glow" ? [0, 0, 0] : [0, 1, 0];
+        for (let i = 0; i < seg; i++) this.tri(g, [top, t[i], t[(i + 1) % seg]], [up, up, up], col, cast);
+      }
+    }
+    /* A flat upright sheet between two points on the pad, from y0 up to y1 (fence mesh, windscreen, nets) */
+    panel(x1, z1, x2, z2, y0, y1, col, o = {}) {
+      const a = this.W(x1, z1);
+      const b = this.W(x2, z2);
+      this.quad(o.group || "glass", [[a[0], y0, a[1]], [b[0], y0, b[1]], [b[0], y1, b[1]], [a[0], y1, a[1]]], col, !!o.cast, null);
+    }
+    /* A thin bar between two points on the pad, at height y */
+    bar(x1, z1, x2, z2, y, thick, col, o = {}) {
+      const len = Math.hypot(x2 - x1, z2 - z1);
+      if (len < 0.05) return;
+      this.box((x1 + x2) / 2, (z1 + z2) / 2, y - thick / 2, len, thick, thick, Math.atan2(z2 - z1, x2 - x1) * 180 / Math.PI, col, o);
+    }
+    /* A circle of small bars (a basketball rim) */
+    ring(lx, lz, y, r, thick, col, seg = 14) {
+      for (let i = 0; i < seg; i++) {
+        const a0 = i / seg * Math.PI * 2;
+        const a1 = (i + 1) / seg * Math.PI * 2;
+        this.bar(lx + Math.cos(a0) * r, lz + Math.sin(a0) * r, lx + Math.cos(a1) * r, lz + Math.sin(a1) * r, y, thick, col, { cast: false });
+      }
+    }
+  };
+  var rad2deg = (a) => a * 180 / Math.PI;
+  function addCourtSolids(B, p) {
+    const { dims, layout, fence, nets, flexPlaced } = p;
+    const gates = fence && fence.on ? p.gates || [] : [];
+    const L = dims.l;
+    const Wd = dims.w;
+    const post = rgba("#6b7482");
+    const mesh = rgba("#8d97a3", 0.17);
+    const c = [B.W(0, 0), B.W(L, 0), B.W(L, Wd), B.W(0, Wd)];
+    const mid = B.W(L / 2, Wd / 2);
+    for (let i = 0; i < 4; i++) {
+      const a = c[i];
+      const b = c[(i + 1) % 4];
+      B.quad("solid", [[a[0], APRON_Y, a[1]], [b[0], APRON_Y, b[1]], [b[0], 0, b[1]], [a[0], 0, a[1]]], rgba("#b6b5ae"), false, [mid[0], -0.1, mid[1]]);
+    }
+    const run = (x1, z1, x2, z2, h, windscreen, spacing) => {
+      const len = Math.hypot(x2 - x1, z2 - z1);
+      if (len < 0.1) return;
+      const n = Math.max(1, Math.ceil(len / spacing));
+      for (let i = 0; i <= n; i++) B.cyl(x1 + (x2 - x1) * i / n, z1 + (z2 - z1) * i / n, 0, h, 0.13, 0.13, post, { seg: 8 });
+      B.panel(x1, z1, x2, z2, 0.2, h, mesh);
+      if (windscreen) B.panel(x1, z1, x2, z2, 0.4, h - 0.3, windscreen);
+      B.bar(x1, z1, x2, z2, h, 0.2, post, { cast: false });
+    };
+    if (fence && fence.on) {
+      const wind = p.screenHex ? rgba(p.screenHex, 0.93) : null;
+      fenceSegments(dims, gates).forEach((s) => run(s.x1, s.y1, s.x2, s.y2, fence.height, wind, 10));
+      gates.forEach((g) => {
+        const G = gateGeom(g, dims);
+        const h = Math.max(4, fence.height - 0.5);
+        const frame = rgba("#c2410c");
+        [G.p0, G.p1].forEach((q) => B.cyl(q.x, q.y, 0, fence.height + 0.5, 0.2, 0.2, rgba("#4b5563"), { seg: 8 }));
+        G.leaves.forEach((lf) => {
+          B.panel(lf.hinge.x, lf.hinge.y, lf.closed.x, lf.closed.y, 0.3, h, rgba("#8d97a3", 0.3));
+          B.bar(lf.hinge.x, lf.hinge.y, lf.closed.x, lf.closed.y, h, 0.25, frame, { cast: false });
+          B.bar(lf.hinge.x, lf.hinge.y, lf.closed.x, lf.closed.y, 0.35, 0.25, frame, { cast: false });
+          B.cyl(lf.closed.x, lf.closed.y, 0, h, 0.12, 0.12, frame, { seg: 6 });
+        });
+      });
+    }
+    const dv = layout && layout.dividerView;
+    if (dv) {
+      const a = dv.orient === "across" ? [dv.pos, 0, dv.pos, Wd] : [0, dv.pos, L, dv.pos];
+      if (dv.kind === "net") {
+        B.panel(a[0], a[1], a[2], a[3], 0.5, 10, rgba("#1f2937", 0.38));
+        B.bar(a[0], a[1], a[2], a[3], 10, 0.14, post, { cast: false });
+        const len = Math.hypot(a[2] - a[0], a[3] - a[1]);
+        const n = Math.max(1, Math.ceil(len / 20));
+        for (let i = 0; i <= n; i++) B.cyl(a[0] + (a[2] - a[0]) * i / n, a[1] + (a[3] - a[1]) * i / n, 0, 10.2, 0.15, 0.15, post, { seg: 8 });
+      } else {
+        run(a[0], a[1], a[2], a[3], dv.height, null, 10);
+      }
+    }
+    (nets || []).forEach((n) => {
+      const spec = NET_3D[n.id] || NET_3D.tennisNet;
+      const len = Math.hypot(n.x2 - n.x1, n.y2 - n.y1);
+      if (len < 0.5) return;
+      B.panel(n.x1, n.y1, n.x2, n.y2, spec.top - spec.drop, spec.top, rgba("#1f2937", 0.55));
+      B.bar(n.x1, n.y1, n.x2, n.y2, spec.top, 0.22, rgba("#e5e7eb"), { cast: false });
+      [[n.x1, n.y1], [n.x2, n.y2]].forEach(([x, z]) => B.cyl(x, z, 0, spec.post, 0.17, 0.15, rgba("#3b4351"), { seg: 8 }));
+      if (n.score) {
+        const ax = (n.x2 - n.x1) / len;
+        const az = (n.y2 - n.y1) / len;
+        const bx = n.x1 - ax * 2.2;
+        const bz = n.y1 - az * 2.2;
+        const ang = rad2deg(Math.atan2(az, ax));
+        const y = spec.post + 0.3;
+        B.bar(n.x1, n.y1, bx, bz, y + 0.4, 0.18, rgba("#4b5563"), { cast: false });
+        B.box(bx, bz, y, 2.4, 1, 1.4, ang, rgba("#1f2937"));
+        const px = -az;
+        const pz = ax;
+        [0.52, -0.52].forEach((s) => B.box(bx + px * s, bz + pz * s, y + 0.2, 2, 0.02, 1, ang, rgba("#8fe0b0"), { group: "glow", cast: false }));
+      }
+    });
+    (flexPlaced || []).forEach((q) => {
+      const d = DIR[q.edge];
+      const dx = d.x;
+      const dz = d.y;
+      const px = -dz;
+      const pz = dx;
+      const at = (a, b) => [q.pos.x + dx * a + px * b, q.pos.y + dz * a + pz * b];
+      const ang = rad2deg(Math.atan2(dz, dx));
+      const y0 = q.outside ? APRON_Y : 0;
+      const dark = rgba("#3a3f47");
+      const def = ACCESSORIES[q.type];
+      if (q.type === "led" || q.type === "led2") {
+        B.cyl(q.pos.x, q.pos.y, y0, 25, 0.46, 0.26, rgba("#9aa3ad"), { seg: 10 });
+        const tip = at(3.2, 0);
+        const mid2 = at(1.6, 0);
+        B.box(mid2[0], mid2[1], 24.45, 3.2, 0.22, 0.22, ang, rgba("#9aa3ad"), { cast: false });
+        const heads = def.fixtures === 2 ? [-3, 3] : [0];
+        if (def.fixtures === 2) B.box(tip[0], tip[1], 24.45, 0.22, 7, 0.22, ang, rgba("#9aa3ad"), { cast: false });
+        heads.forEach((s) => {
+          const h = at(3.2, s);
+          B.box(h[0], h[1], 24.2, 2.6, 1.6, 0.5, ang, dark, { cast: false });
+          B.box(h[0], h[1], 24.15, 2.3, 1.3, 0.06, ang, rgba("#fff3c4"), { group: "glow", cast: false });
+        });
+      } else if (q.type === "goal") {
+        const out = Math.max(0.5, q.out);
+        const e = at(out, 0);
+        const arm = at(out / 2, 0);
+        B.cyl(q.pos.x, q.pos.y, 0, 12, 0.4, 0.34, rgba("#4b5563"), { seg: 10 });
+        B.box(arm[0], arm[1], 11.05, out, 0.35, 0.35, ang, rgba("#4b5563"), { cast: false });
+        B.box(e[0], e[1], 8.9, 0.18, 6, 3.5, ang, rgba("#e3eaee"));
+        B.box(e[0], e[1], 9.6, 0.2, 2, 1.5, ang, rgba("#c0392b"), { cast: false, group: "glass" });
+        const rim = at(out + 0.95, 0);
+        B.ring(rim[0], rim[1], 10, 0.75, 0.12, rgba("#e8590c"));
+        B.cyl(rim[0], rim[1], 8.9, 10, 0.45, 0.75, rgba("#f3f4f6", 0.55), { seg: 10, group: "glass", cap: false, cast: false });
+      } else if (q.type === "futsalGoal") {
+        const half = def.half || 4.9;
+        const e = at(Math.max(0, q.out), 0);
+        const fr = rgba("#eef0f2");
+        [-half, half].forEach((s) => {
+          const a = at(Math.max(0, q.out), s);
+          B.cyl(a[0], a[1], 0, 6.56, 0.13, 0.13, fr, { seg: 8 });
+          const back = at(Math.max(0, q.out) - 3, s);
+          B.panel(a[0], a[1], back[0], back[1], 0.1, 6, rgba("#e5e7eb", 0.4));
+        });
+        const left = at(Math.max(0, q.out), -half);
+        const right = at(Math.max(0, q.out), half);
+        B.bar(left[0], left[1], right[0], right[1], 6.56, 0.26, fr, { cast: false });
+        const bl = at(Math.max(0, q.out) - 3, -half);
+        const br = at(Math.max(0, q.out) - 3, half);
+        B.panel(bl[0], bl[1], br[0], br[1], 0.1, 6, rgba("#e5e7eb", 0.4));
+        void e;
+      } else if (q.type === "bench") {
+        const sh = def.shape;
+        const wood = rgba(sh.fill);
+        const slat = sh.depth * 0.9 / 4;
+        for (let k = 0; k < 4; k++) {
+          const c0 = at(-sh.depth * 0.45 + slat * (k + 0.5) + k * 0.02, 0);
+          B.box(c0[0], c0[1], 1.4, slat - 0.04, sh.len, 0.12, ang, wood);
+        }
+        [-1, 1].forEach((s2) => {
+          [0.3, -0.3].forEach((fa) => {
+            const l = at(fa * sh.depth, s2 * (sh.len / 2 - 0.4));
+            B.box(l[0], l[1], 0, 0.14, 0.14, 1.4, ang, dark);
+          });
+          const arm = at(0, s2 * (sh.len / 2 - 0.1));
+          B.box(arm[0], arm[1], 2.2, sh.depth * 0.85, 0.12, 0.12, ang, dark);
+        });
+        const back = at(-sh.depth / 2 + 0.1, 0);
+        [0, 1, 2].forEach((k) => B.box(back[0], back[1], 1.7 + k * 0.38, 0.1, sh.len, 0.28, ang, wood, { rot: 0 }));
+        if (q.shade) {
+          const hd = SHADE.depth / 2;
+          const hl = SHADE.len / 2;
+          const postC = rgba("#1d2124");
+          [[-1, -1], [-1, 1], [1, -1], [1, 1]].forEach(([a, b]) => {
+            const c0 = at(a * (hd - 0.4), b * (hl - 0.6));
+            B.cyl(c0[0], c0[1], 0, 8.2, 0.2, 0.2, postC, { seg: 8 });
+          });
+          const green = rgba("#1f6b45");
+          const green2 = rgba("#185a39");
+          const ov = 0.8;
+          const ea = hd + ov;
+          const eb = hl + ov;
+          const rb = Math.max(0.5, hl - hd * 0.7);
+          const P = (a, b, y) => {
+            const c0 = at(a, b);
+            return [c0[0], y, c0[1]];
+          };
+          const mid2 = P(0, 0, 7);
+          const E1 = P(-ea, -eb, 8.2), E2 = P(-ea, eb, 8.2), E3 = P(ea, eb, 8.2), E4 = P(ea, -eb, 8.2);
+          const R1 = P(0, -rb, 9.7), R2 = P(0, rb, 9.7);
+          B.quad("solid", [E1, E2, R2, R1], green, true, mid2);
+          B.quad("solid", [E4, E3, R2, R1], green, true, mid2);
+          const tri = (A, Bp, C) => {
+            let n = V3.norm(V3.cross(V3.sub(Bp, A), V3.sub(C, A)));
+            const fc = [(A[0] + Bp[0] + C[0]) / 3, (A[1] + Bp[1] + C[1]) / 3, (A[2] + Bp[2] + C[2]) / 3];
+            if (V3.dot(n, V3.sub(fc, mid2)) < 0) n = [-n[0], -n[1], -n[2]];
+            B.tri("solid", [A, Bp, C], [n, n, n], green2, true);
+          };
+          tri(E1, E4, R1);
+          tri(E2, E3, R2);
+          const lo = (v) => [v[0], 7.7, v[2]];
+          [[E1, E2], [E2, E3], [E3, E4], [E4, E1]].forEach(([a, b]) => B.quad("solid", [a, b, lo(b), lo(a)], green2, false, mid2));
+        }
+      } else if (q.type === "practiceWall") {
+        const sh = def.shape;
+        const face = rgba("#0f4a30");
+        const frame = rgba("#e8ece9");
+        const y1 = 1.3;
+        const H = 8.7;
+        B.box(q.pos.x, q.pos.y, y1, 0.3, sh.len, H, ang, face);
+        const fr = at(sh.depth / 2 + 0, 0);
+        const f0 = at(0.17, 0);
+        B.box(f0[0], f0[1], y1 + 3, 0.04, sh.len, 0.2, ang, frame);
+        B.box(f0[0], f0[1], y1 + H - 0.12, 0.04, sh.len, 0.12, ang, frame);
+        B.box(f0[0], f0[1], y1, 0.04, sh.len, 0.12, ang, frame);
+        [-1, 1].forEach((s2) => {
+          const e0 = at(0.17, s2 * (sh.len / 2 - 0.06));
+          B.box(e0[0], e0[1], y1, 0.04, 0.12, H, ang, frame);
+        });
+        void fr;
+        [-0.4, -0.13, 0.13, 0.4].forEach((f) => {
+          const l = at(-0.3, f * sh.len);
+          B.box(l[0], l[1], 0, 0.3, 0.3, y1, ang, dark);
+        });
+      }
+    });
+  }
+  function buildScene3D(list) {
+    const B = new SceneBuilder();
+    const quads = [];
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    list.forEach((it) => {
+      const dims = it.props.dims;
+      B.court(it.cx, it.cz, it.rot || 0, dims.l, dims.w);
+      addCourtSolids(B, it.props);
+      const c = [B.W(0, 0), B.W(dims.l, 0), B.W(dims.l, dims.w), B.W(0, dims.w)];
+      quads.push({ pos: new Float32Array(c.flatMap((q) => [q[0], 0, q[1]])), uv: new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]) });
+      c.forEach(([x, z]) => {
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minZ = Math.min(minZ, z);
+        maxZ = Math.max(maxZ, z);
+      });
+    });
+    if (!list.length) {
+      minX = -30;
+      maxX = 30;
+      minZ = -30;
+      maxZ = 30;
+    }
+    const cx = (minX + maxX) / 2;
+    const cz = (minZ + maxZ) / 2;
+    return {
+      solid: new Float32Array(B.m.solid),
+      glass: new Float32Array(B.m.glass),
+      glow: new Float32Array(B.m.glow),
+      shadow: new Float32Array(B.sh),
+      quads,
+      bounds: { minX, maxX, minZ, maxZ, cx, cz, radius: Math.hypot(maxX - minX, maxZ - minZ) / 2 + 12 }
+    };
+  }
+  var GLSL_HEAD = "#ifdef GL_FRAGMENT_PRECISION_HIGH\nprecision highp float;\n#else\nprecision mediump float;\n#endif\n";
+  var FOG_FN = `
+uniform vec3 uEye; uniform vec3 uFogC; uniform float uFogN; uniform float uFogF;
+vec3 fogged(vec3 c, vec3 w) { return mix(c, uFogC, smoothstep(uFogN, uFogF, distance(w, uEye))); }
+`;
+  var SHADERS = {
+    mesh: {
+      vs: "attribute vec3 aPos; attribute vec3 aNor; attribute vec4 aCol; uniform mat4 uVP; varying vec3 vN; varying vec4 vC; varying vec3 vW; void main(){ vN=aNor; vC=aCol; vW=aPos; gl_Position=uVP*vec4(aPos,1.0); }",
+      fs: GLSL_HEAD + FOG_FN + `
+uniform vec3 uSun; uniform vec3 uSkyC; uniform vec3 uGndC; uniform float uTwo;
+varying vec3 vN; varying vec4 vC; varying vec3 vW;
+void main(){
+  vec3 col = vC.rgb;
+  float ln = length(vN);
+  if (ln > 0.01) {
+    vec3 n = vN / ln;
+    float d = uTwo > 0.5 ? abs(dot(n, uSun)) : max(dot(n, uSun), 0.0);
+    vec3 amb = mix(uGndC, uSkyC, n.y * 0.5 + 0.5);
+    col = col * (amb * 0.62 + vec3(1.0, 0.97, 0.9) * d * 0.8);
+  }
+  gl_FragColor = vec4(fogged(col, vW), vC.a);
+}`
+    },
+    tex: {
+      vs: "attribute vec3 aPos; attribute vec2 aUV; uniform mat4 uVP; varying vec2 vUV; varying vec3 vW; void main(){ vUV=aUV; vW=aPos; gl_Position=uVP*vec4(aPos,1.0); }",
+      fs: GLSL_HEAD + FOG_FN + `
+uniform sampler2D uTex; uniform float uLight;
+varying vec2 vUV; varying vec3 vW;
+void main(){ vec4 t = texture2D(uTex, vUV); gl_FragColor = vec4(fogged(t.rgb * uLight, vW), 1.0); }`
+    },
+    flat: {
+      vs: "attribute vec3 aPos; uniform mat4 uVP; varying vec3 vW; void main(){ vW=aPos; gl_Position=uVP*vec4(aPos,1.0); }",
+      fs: GLSL_HEAD + FOG_FN + `
+uniform vec4 uColor; varying vec3 vW;
+void main(){ vec3 c = uColor.a < 0.99 ? uColor.rgb : fogged(uColor.rgb, vW); gl_FragColor = vec4(c, uColor.a); }`
+    },
+    sky: {
+      vs: "attribute vec2 aPos; varying vec2 vP; void main(){ vP = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.999, 1.0); }",
+      fs: GLSL_HEAD + `
+uniform vec3 uTop; uniform vec3 uHor; varying vec2 vP;
+void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.0); }`
+    }
+  };
+  var SKY_TOP = rgba("#8fb8de");
+  var SKY_HOR = rgba("#e7eef4");
+  var APRON_COLOR = rgba("#b3c3a1");
+  var pow2 = (v, cap) => Math.min(cap, Math.max(64, 2 ** Math.round(Math.log2(Math.max(1, v)))));
+  function createRenderer3D(canvas, opts = {}) {
+    let gl = null;
+    try {
+      gl = canvas.getContext("webgl", { antialias: true, stencil: true, alpha: false, preserveDrawingBuffer: !!opts.keep }) || canvas.getContext("experimental-webgl");
+    } catch (e) {
+      gl = null;
+    }
+    if (!gl) return null;
+    const maxTex = Math.min(4096, gl.getParameter(gl.MAX_TEXTURE_SIZE) || 2048);
+    const aniso = gl.getExtension("EXT_texture_filter_anisotropic");
+    const program = (src) => {
+      const mk = (type, text) => {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, text);
+        gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+        return s;
+      };
+      const p = gl.createProgram();
+      gl.attachShader(p, mk(gl.VERTEX_SHADER, src.vs));
+      gl.attachShader(p, mk(gl.FRAGMENT_SHADER, src.fs));
+      gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+      const u = {};
+      const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+      for (let i = 0; i < n; i++) {
+        const info = gl.getActiveUniform(p, i);
+        u[info.name] = gl.getUniformLocation(p, info.name);
+      }
+      return { p, u, a: (name) => gl.getAttribLocation(p, name) };
+    };
+    let P;
+    try {
+      P = { mesh: program(SHADERS.mesh), tex: program(SHADERS.tex), flat: program(SHADERS.flat), sky: program(SHADERS.sky) };
+    } catch (e) {
+      return null;
+    }
+    const buf = (data) => {
+      const b = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, b);
+      gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      return b;
+    };
+    const skyBuf = buf(new Float32Array([-1, -1, 3, -1, -1, 3]));
+    let owned = [];
+    let scene = null;
+    let textures = [];
+    let ground = null;
+    let apronBuf = null;
+    const texture = (src) => {
+      const w = pow2(src.width, maxTex);
+      const h = pow2(src.height, maxTex);
+      let img = src;
+      if (w !== src.width || h !== src.height) {
+        img = document.createElement("canvas");
+        img.width = w;
+        img.height = h;
+        img.getContext("2d").drawImage(src, 0, 0, w, h);
+      }
+      const t = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      if (aniso) gl.texParameterf(gl.TEXTURE_2D, aniso.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+      return t;
+    };
+    const setScene = (sc, courtImages, groundImg) => {
+      owned.forEach((o) => o.tex ? gl.deleteTexture(o.tex) : gl.deleteBuffer(o.buf));
+      owned = [];
+      const own = (o) => {
+        owned.push(o);
+        return o;
+      };
+      scene = {
+        sc,
+        solid: sc.solid.length ? { buf: own({ buf: buf(sc.solid) }).buf, n: sc.solid.length / 10 } : null,
+        glass: sc.glass.length ? { buf: own({ buf: buf(sc.glass) }).buf, n: sc.glass.length / 10 } : null,
+        glow: sc.glow.length ? { buf: own({ buf: buf(sc.glow) }).buf, n: sc.glow.length / 10 } : null,
+        shadow: sc.shadow.length ? { buf: own({ buf: buf(sc.shadow) }).buf, n: sc.shadow.length / 3 } : null
+      };
+      textures = sc.quads.map((q, i) => {
+        const img = courtImages[i];
+        const pos = own({ buf: buf(q.pos) }).buf;
+        const uv = own({ buf: buf(q.uv) }).buf;
+        const tex = img ? own({ tex: texture(img) }).tex : null;
+        return { pos, uv, tex };
+      });
+      ground = null;
+      if (groundImg) {
+        const w = groundImg.W;
+        const h = groundImg.H;
+        const y = APRON_Y + 0.02;
+        ground = {
+          pos: own({ buf: buf(new Float32Array([0, y, 0, w, y, 0, w, y, h, 0, y, h])) }).buf,
+          uv: own({ buf: buf(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1])) }).buf,
+          tex: own({ tex: texture(groundImg.canvas) }).tex
+        };
+      }
+      const R = 2500;
+      const b = sc.bounds;
+      apronBuf = own({ buf: buf(new Float32Array([b.cx - R, APRON_Y, b.cz - R, b.cx + R, APRON_Y, b.cz - R, b.cx + R, APRON_Y, b.cz + R, b.cx - R, APRON_Y, b.cz + R])) }).buf;
+    };
+    const attr = (prog, name, size, stride, offset) => {
+      const loc = prog.a(name);
+      if (loc < 0) return;
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, size, gl.FLOAT, false, stride, offset);
+    };
+    const common = (prog, cam) => {
+      gl.useProgram(prog.p);
+      gl.uniformMatrix4fv(prog.u.uVP, false, cam.vp);
+      if (prog.u.uEye) {
+        gl.uniform3fv(prog.u.uEye, cam.eye);
+        gl.uniform3fv(prog.u.uFogC, SKY_HOR.slice(0, 3));
+        gl.uniform1f(prog.u.uFogN, cam.fogN);
+        gl.uniform1f(prog.u.uFogF, cam.fogF);
+      }
+    };
+    const drawQuad = (cam, pos, uv, tex, light) => {
+      const p = P.tex;
+      common(p, cam);
+      gl.uniform1f(p.u.uLight, light);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.uniform1i(p.u.uTex, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, pos);
+      attr(p, "aPos", 3, 12, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, uv);
+      attr(p, "aUV", 2, 8, 0);
+      gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+    };
+    const drawMesh = (cam, m, two) => {
+      if (!m) return;
+      const p = P.mesh;
+      common(p, cam);
+      gl.uniform3fv(p.u.uSun, SUN_DIR);
+      gl.uniform3fv(p.u.uSkyC, [0.85, 0.9, 0.97]);
+      gl.uniform3fv(p.u.uGndC, [0.62, 0.64, 0.58]);
+      gl.uniform1f(p.u.uTwo, two ? 1 : 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, m.buf);
+      attr(p, "aPos", 3, 40, 0);
+      attr(p, "aNor", 3, 40, 12);
+      attr(p, "aCol", 4, 40, 24);
+      gl.drawArrays(gl.TRIANGLES, 0, m.n);
+    };
+    const draw = (cam0) => {
+      const w = canvas.width;
+      const h = canvas.height;
+      gl.viewport(0, 0, w, h);
+      const eye = [
+        cam0.target[0] + cam0.dist * Math.cos(cam0.pitch) * Math.sin(cam0.yaw),
+        cam0.target[1] + cam0.dist * Math.sin(cam0.pitch),
+        cam0.target[2] + cam0.dist * Math.cos(cam0.pitch) * Math.cos(cam0.yaw)
+      ];
+      const vp = mat4Mul(mat4Persp(0.72, w / h, Math.max(0.5, cam0.dist / 200), cam0.dist * 12 + 2e3), mat4Look(eye, cam0.target, [0, 1, 0]));
+      const cam = { vp, eye, fogN: cam0.dist + (cam0.radius || 60) * 3, fogF: cam0.dist + (cam0.radius || 60) * 14 + 400 };
+      gl.clearColor(SKY_HOR[0], SKY_HOR[1], SKY_HOR[2], 1);
+      gl.clearStencil(0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
+      gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.BLEND);
+      gl.disable(gl.CULL_FACE);
+      gl.useProgram(P.sky.p);
+      gl.uniform3fv(P.sky.u.uTop, SKY_TOP.slice(0, 3));
+      gl.uniform3fv(P.sky.u.uHor, SKY_HOR.slice(0, 3));
+      gl.bindBuffer(gl.ARRAY_BUFFER, skyBuf);
+      attr(P.sky, "aPos", 2, 8, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if (!scene) return;
+      gl.enable(gl.DEPTH_TEST);
+      gl.depthFunc(gl.LEQUAL);
+      const fl = P.flat;
+      common(fl, cam);
+      gl.uniform4fv(fl.u.uColor, APRON_COLOR);
+      gl.bindBuffer(gl.ARRAY_BUFFER, apronBuf);
+      attr(fl, "aPos", 3, 12, 0);
+      gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+      if (ground) drawQuad(cam, ground.pos, ground.uv, ground.tex, 0.97);
+      textures.forEach((q) => q.tex && drawQuad(cam, q.pos, q.uv, q.tex, 1));
+      drawMesh(cam, scene.solid, false);
+      drawMesh(cam, scene.glow, false);
+      if (scene.shadow) {
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.depthMask(false);
+        gl.enable(gl.STENCIL_TEST);
+        gl.stencilFunc(gl.EQUAL, 0, 255);
+        gl.stencilOp(gl.KEEP, gl.KEEP, gl.INCR);
+        common(fl, cam);
+        gl.uniform4fv(fl.u.uColor, [0.04, 0.06, 0.05, 0.3]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, scene.shadow.buf);
+        attr(fl, "aPos", 3, 12, 0);
+        gl.drawArrays(gl.TRIANGLES, 0, scene.shadow.n);
+        gl.disable(gl.STENCIL_TEST);
+        gl.depthMask(true);
+      }
+      if (scene.glass) {
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.depthMask(false);
+        drawMesh(cam, scene.glass, true);
+        gl.depthMask(true);
+      }
+      gl.disable(gl.BLEND);
+    };
+    const dispose = () => {
+      owned.forEach((o) => o.tex ? gl.deleteTexture(o.tex) : gl.deleteBuffer(o.buf));
+      owned = [];
+      const lose = gl.getExtension("WEBGL_lose_context");
+      if (lose) lose.loseContext();
+    };
+    return { gl, setScene, draw, dispose };
+  }
+  var fitCamera = (bounds, view = {}) => ({
+    target: [bounds.cx, 0, bounds.cz],
+    yaw: view.yaw ?? 0.6,
+    pitch: view.pitch ?? 0.5,
+    radius: bounds.radius,
+    dist: bounds.radius * (view.far ?? 2.1)
+  });
+  var MOVIE_SECONDS = 15;
+  var TURN_RATE = Math.PI * 2 / 40;
+  var MOVIE_VIEWS = [["Low", 0.3], ["Medium", 0.5], ["High", 0.85]];
+  function markupToCanvas(markup, w, h) {
+    return new Promise((resolve, reject) => {
+      const text = markup.replace(/<svg /, `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" preserveAspectRatio="none" `).replace(/ class="[^"]*"/, "");
+      const url = URL.createObjectURL(new Blob([text], { type: "image/svg+xml;charset=utf-8" }));
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        c.getContext("2d").drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        resolve(c);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Could not draw the court surface."));
+      };
+      img.src = url;
+    });
+  }
+  var groundProps = (p) => ({
+    ...p,
+    overlay: true,
+    meas: null,
+    fence: { ...p.fence, on: false },
+    nets: [],
+    flexPlaced: [],
+    gates: [],
+    layout: { ...p.layout, dividerView: null }
+  });
+  var pickMime = () => {
+    if (typeof MediaRecorder === "undefined") return null;
+    const tries = [["video/mp4;codecs=avc1.42E01E", "mp4"], ["video/mp4", "mp4"], ["video/webm;codecs=vp9", "webm"], ["video/webm;codecs=vp8", "webm"], ["video/webm", "webm"]];
+    const hit = tries.find(([t]) => MediaRecorder.isTypeSupported(t));
+    return hit ? { mime: hit[0], ext: hit[1] } : null;
+  };
+  function recordTurn({ bundle, cam, seconds = MOVIE_SECONDS, width = 1920, height = 1080, title = "", onProgress, signal }) {
+    return new Promise((resolve, reject) => {
+      const fmt = pickMime();
+      if (!fmt) return reject(new Error("This browser cannot record video. Try Chrome, Edge or Safari."));
+      const glCanvas = document.createElement("canvas");
+      glCanvas.width = width;
+      glCanvas.height = height;
+      const rend = createRenderer3D(glCanvas);
+      if (!rend) return reject(new Error("This browser cannot draw 3D."));
+      rend.setScene(bundle.scene, bundle.images, bundle.groundImg);
+      const out = document.createElement("canvas");
+      out.width = width;
+      out.height = height;
+      const ctx = out.getContext("2d");
+      let rec;
+      try {
+        rec = new MediaRecorder(out.captureStream(30), { mimeType: fmt.mime, videoBitsPerSecond: 9e6 });
+      } catch (e) {
+        rend.dispose();
+        return reject(new Error("Could not start recording."));
+      }
+      const chunks = [];
+      rec.ondataavailable = (e) => e.data && e.data.size && chunks.push(e.data);
+      rec.onstop = () => {
+        rend.dispose();
+        if (signal && signal.aborted) return reject(new Error("Cancelled."));
+        resolve({ blob: new Blob(chunks, { type: fmt.mime.split(";")[0] }), ext: fmt.ext });
+      };
+      const frame = (yaw) => {
+        rend.draw({ ...cam, yaw });
+        ctx.drawImage(glCanvas, 0, 0, width, height);
+        if (title) {
+          const bh = Math.round(height * 0.085);
+          ctx.fillStyle = "#323c61";
+          ctx.fillRect(0, height - bh, width, bh);
+          ctx.fillStyle = "#236e45";
+          ctx.fillRect(0, height - bh, Math.round(width * 8e-3), bh);
+          ctx.fillStyle = "#8fe0b0";
+          ctx.textBaseline = "middle";
+          ctx.font = `700 ${Math.round(bh * 0.42)}px "Avenir Next", "Segoe UI", system-ui, sans-serif`;
+          ctx.textAlign = "left";
+          ctx.fillText(title.slice(0, 60), Math.round(width * 0.03), height - bh / 2);
+          ctx.textAlign = "right";
+          ctx.font = `600 ${Math.round(bh * 0.34)}px "Avenir Next", "Segoe UI", system-ui, sans-serif`;
+          ctx.fillText("MASTER SYSTEMS COURTS", width - Math.round(width * 0.03), height - bh / 2);
+        }
+      };
+      frame(cam.yaw);
+      rec.start(250);
+      const t0 = performance.now();
+      const tick = (now) => {
+        if (signal && signal.aborted) {
+          rec.stop();
+          return;
+        }
+        const f = Math.min(1, (now - t0) / (seconds * 1e3));
+        frame(cam.yaw + f * Math.PI * 2);
+        if (onProgress) onProgress(f);
+        if (f >= 1) {
+          rec.stop();
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  }
+  async function saveBlob(name, blob) {
+    try {
+      const hc = typeof window !== "undefined" && window.claude && window.claude.use ? await window.claude.use("downloads") : null;
+      if (hc && hc.save) {
+        await hc.save({ filename: name, data: blob });
+        return "saved";
+      }
+    } catch (e) {
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 6e4);
+    return "downloaded";
+  }
+  function Court3DView({ place, photoSrc = "", photoFt = 300, title = "", fileBase = "court" }) {
+    const canvasRef = (0, import_react.useRef)(null);
+    const hostRef = (0, import_react.useRef)(null);
+    const rendRef = (0, import_react.useRef)(null);
+    const bundleRef = (0, import_react.useRef)(null);
+    const cam = (0, import_react.useRef)({ ...fitCamera({ cx: 0, cz: 0, radius: 80 }), auto: true, dirty: true, down: 0 });
+    const [auto, setAuto] = (0, import_react.useState)(true);
+    const [ok, setOk] = (0, import_react.useState)(true);
+    const [busy, setBusy] = (0, import_react.useState)(false);
+    const [progress, setProgress] = (0, import_react.useState)(0);
+    const [movie, setMovie] = (0, import_react.useState)(null);
+    const [err, setErr] = (0, import_react.useState)("");
+    const [look, setLook] = (0, import_react.useState)(1);
+    const [bar, setBar] = (0, import_react.useState)(true);
+    const [photo, setPhoto] = (0, import_react.useState)(null);
+    const abort = (0, import_react.useRef)(null);
+    (0, import_react.useEffect)(() => {
+      setPhoto(null);
+      if (!photoSrc) return void 0;
+      let dead = false;
+      const img = new Image();
+      img.onload = () => {
+        if (dead) return;
+        const k = Math.min(1, 2048 / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement("canvas");
+        c.width = Math.max(2, Math.round(img.naturalWidth * k));
+        c.height = Math.max(2, Math.round(img.naturalHeight * k));
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        setPhoto({ canvas: c, aspect: img.naturalWidth / img.naturalHeight });
+      };
+      img.src = photoSrc;
+      return () => {
+        dead = true;
+      };
+    }, [photoSrc]);
+    const aspect = photo ? photo.aspect : 1.5;
+    const list = place(aspect);
+    const sig = JSON.stringify(list) + (photo ? `|${photoFt}|${aspect}` : "");
+    (0, import_react.useEffect)(() => {
+      const r = createRenderer3D(canvasRef.current);
+      rendRef.current = r;
+      if (!r) {
+        setOk(false);
+        return void 0;
+      }
+      return () => {
+        r.dispose();
+        rendRef.current = null;
+      };
+    }, []);
+    const first = (0, import_react.useRef)(true);
+    (0, import_react.useEffect)(() => {
+      const r = rendRef.current;
+      if (!r || !hostRef.current) return void 0;
+      let dead = false;
+      const timer = setTimeout(async () => {
+        try {
+          const svgs = [...hostRef.current.querySelectorAll("svg")];
+          const scene = buildScene3D(list);
+          const images = await Promise.all(list.map((it, i) => {
+            const el = svgs[i];
+            if (!el) return null;
+            const w = pow2(it.props.dims.l * 24, 2048);
+            const h = pow2(it.props.dims.w * 24, 2048);
+            return markupToCanvas(el.outerHTML, w, h).catch(() => null);
+          }));
+          if (dead) return;
+          const groundImg = photo ? { canvas: photo.canvas, W: photoFt, H: photoFt / photo.aspect } : null;
+          r.setScene(scene, images, groundImg);
+          bundleRef.current = { scene, images, groundImg };
+          if (first.current || !cam.current.fitKey || cam.current.fitKey !== `${list.length}|${!!photo}`) {
+            Object.assign(cam.current, fitCamera(scene.bounds, { yaw: cam.current.yaw, pitch: cam.current.pitch }), { fitKey: `${list.length}|${!!photo}` });
+            first.current = false;
+          }
+          cam.current.radius = scene.bounds.radius;
+          cam.current.dirty = true;
+        } catch (e) {
+          setErr(e.message || "Could not build the 3D view.");
+        }
+      }, 150);
+      return () => {
+        dead = true;
+        clearTimeout(timer);
+      };
+    }, [sig]);
+    (0, import_react.useEffect)(() => {
+      const cv = canvasRef.current;
+      const fit = () => {
+        const r = cv.getBoundingClientRect();
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        const w = Math.max(2, Math.round(r.width * dpr));
+        const h = Math.max(2, Math.round(r.height * dpr));
+        if (cv.width !== w || cv.height !== h) {
+          cv.width = w;
+          cv.height = h;
+          cam.current.dirty = true;
+        }
+      };
+      fit();
+      const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(fit) : null;
+      if (ro) ro.observe(cv);
+      let raf = 0;
+      let last = performance.now();
+      const tick = (t) => {
+        raf = requestAnimationFrame(tick);
+        const dt = Math.min(0.1, (t - last) / 1e3);
+        last = t;
+        const c = cam.current;
+        if (!cv.offsetWidth) return;
+        if (c.auto && !c.down) {
+          c.yaw += dt * TURN_RATE;
+          c.dirty = true;
+        }
+        if (c.dirty && rendRef.current) {
+          c.dirty = false;
+          rendRef.current.draw(c);
+        }
+      };
+      raf = requestAnimationFrame(tick);
+      return () => {
+        cancelAnimationFrame(raf);
+        if (ro) ro.disconnect();
+      };
+    }, []);
+    (0, import_react.useEffect)(() => {
+      cam.current.auto = auto;
+    }, [auto]);
+    const pts = (0, import_react.useRef)(/* @__PURE__ */ new Map());
+    const pinch = (0, import_react.useRef)(0);
+    const down = (e) => {
+      canvasRef.current.setPointerCapture && canvasRef.current.setPointerCapture(e.pointerId);
+      pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      cam.current.down = pts.current.size;
+      pinch.current = 0;
+    };
+    const move = (e) => {
+      const p = pts.current.get(e.pointerId);
+      if (!p) return;
+      const c = cam.current;
+      if (pts.current.size === 1) {
+        c.yaw -= (e.clientX - p.x) * 6e-3;
+        c.pitch = clamp(c.pitch + (e.clientY - p.y) * 5e-3, 0.1, 1.45);
+      } else if (pts.current.size === 2) {
+        const o = [...pts.current.entries()].find(([id]) => id !== e.pointerId)[1];
+        const d = Math.hypot(e.clientX - o.x, e.clientY - o.y);
+        if (pinch.current) c.dist = clamp(c.dist * (pinch.current / d), c.radius * 0.5, c.radius * 8);
+        pinch.current = d;
+      }
+      pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      c.dirty = true;
+    };
+    const up = (e) => {
+      pts.current.delete(e.pointerId);
+      cam.current.down = pts.current.size;
+      pinch.current = 0;
+    };
+    const wheel = (e) => {
+      e.preventDefault();
+      const c = cam.current;
+      c.dist = clamp(c.dist * Math.exp(e.deltaY * 12e-4), c.radius * 0.5, c.radius * 8);
+      c.dirty = true;
+    };
+    (0, import_react.useEffect)(() => {
+      const cv = canvasRef.current;
+      cv.addEventListener("wheel", wheel, { passive: false });
+      return () => cv.removeEventListener("wheel", wheel);
+    }, []);
+    const view = (v) => {
+      const b = bundleRef.current;
+      if (b) Object.assign(cam.current, fitCamera(b.scene.bounds, v));
+      cam.current.dirty = true;
+    };
+    const savePicture = async () => {
+      setErr("");
+      const r = rendRef.current;
+      if (!r) return;
+      cam.current.dirty = false;
+      r.draw(cam.current);
+      const blob = await new Promise((res) => canvasRef.current.toBlob(res, "image/png"));
+      if (!blob) {
+        setErr("Could not make the picture.");
+        return;
+      }
+      await saveBlob(`${fileBase}-3d.png`, blob);
+    };
+    const makeMovie = async () => {
+      const b = bundleRef.current;
+      if (!b || busy) return;
+      setErr("");
+      setMovie(null);
+      setBusy(true);
+      setProgress(0);
+      abort.current = new AbortController();
+      const pitch = MOVIE_VIEWS[look][1];
+      const c = fitCamera(b.scene.bounds, { yaw: cam.current.yaw, pitch, far: 2 });
+      try {
+        const r = await recordTurn({ bundle: b, cam: c, title: bar ? title || "Court design" : "", onProgress: setProgress, signal: abort.current.signal });
+        setMovie({ url: URL.createObjectURL(r.blob), blob: r.blob, name: `${fileBase}-3d.${r.ext}`, size: r.blob.size });
+      } catch (e) {
+        if (e.message !== "Cancelled.") setErr(e.message || "Could not make the movie.");
+      }
+      setBusy(false);
+    };
+    (0, import_react.useEffect)(() => () => {
+      if (abort.current) abort.current.abort();
+    }, []);
+    (0, import_react.useEffect)(() => () => {
+      if (movie) URL.revokeObjectURL(movie.url);
+    }, [movie]);
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-testid": "view3d", children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: hostRef, "aria-hidden": "true", style: { position: "absolute", left: -99999, top: 0, width: 800, height: 0, overflow: "hidden" }, children: list.map((it, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 800 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CourtSurface, { ...groundProps(it.props), sheenId: `g3d${i}` }) }, i)) }),
+      !ok ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { role: "alert", className: "rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900", children: "This browser cannot draw 3D. Try the latest Chrome, Edge, Safari or Firefox." }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "canvas",
+          {
+            ref: canvasRef,
+            "data-testid": "view3d-canvas",
+            "aria-label": "3D view of the court. Drag to turn it, scroll or pinch to zoom.",
+            role: "img",
+            className: "block w-full rounded-lg shadow-lg",
+            style: { aspectRatio: "16 / 9", touchAction: "none", cursor: "grab", background: "#e7eef4" },
+            onPointerDown: down,
+            onPointerMove: move,
+            onPointerUp: up,
+            onPointerCancel: up
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-2 text-xs text-slate-500", children: "Drag to turn it, scroll or pinch to zoom. Shadows and heights are drawn for the sun in the afternoon." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": auto, onClick: () => setAuto((a) => !a), className: chip(auto), children: "Turn slowly" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => view({ pitch: 0.5 }), className: toolBtn, children: "Reset view" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => view({ pitch: 1.45, far: 1.5 }), className: toolBtn, children: "Overhead" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: savePicture, className: toolBtn, children: "Save picture" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mt-4 rounded border border-slate-200 bg-white p-3", "data-testid": "movie-box", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "px-1 text-sm font-semibold text-[#323c61]", children: "3D movie" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "text-xs text-slate-600", children: [
+            "One slow turn around the court, ",
+            MOVIE_SECONDS,
+            " seconds, 1080p. Keep this window open while it records."
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap items-center gap-2", role: "group", "aria-label": "Camera height for the movie", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-xs text-slate-600", children: "Camera" }),
+            MOVIE_VIEWS.map(([n], i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": look === i, onClick: () => setLook(i), className: chip(look === i), children: n }, n)),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "ml-2 flex items-center gap-1 text-xs text-slate-700", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: bar, onChange: (e) => setBar(e.target.checked), className: "h-4 w-4 accent-[#236e45]" }),
+              "Add the project name bar"
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 flex flex-wrap items-center gap-3", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", disabled: busy, onClick: makeMovie, className: "rounded bg-[#323c61] px-4 py-2 text-sm font-semibold text-[#8fe0b0] outline-none hover:bg-[#283050] focus-visible:ring-2 focus-visible:ring-[#236e45] disabled:opacity-50", children: busy ? `Recording... ${Math.round(progress * 100)}%` : "Make the movie" }),
+            busy && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => abort.current && abort.current.abort(), className: toolBtn, children: "Cancel" })
+          ] }),
+          err && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { role: "alert", className: "mt-2 text-xs text-red-700", children: err }),
+          movie && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3", "data-testid": "movie-result", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("video", { src: movie.url, controls: true, loop: true, muted: true, playsInline: true, className: "w-full rounded" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-600", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", onClick: () => saveBlob(movie.name, movie.blob), className: toolBtn, children: [
+                "Save ",
+                movie.name
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                (movie.size / 1048576).toFixed(1),
+                " MB"
+              ] })
+            ] })
+          ] })
+        ] })
+      ] })
+    ] });
+  }
+  function facilityScene(courts, arrange, gap, photo) {
+    const boxes = courts.map((c) => {
+      const pad = canvasPad(c.props.fence, c.props.fence.on ? c.props.gates : [], c.props.flexPlaced);
+      return { id: c.id, props: c.props, rot: c.rot || 0, w: c.props.dims.l + 2 * pad, h: c.props.dims.w + 2 * pad };
+    });
+    const preset = arrangeBoxes(boxes, arrange, gap);
+    const raw = preset.boxes.map((b) => {
+      const c = courts.find((x) => x.id === b.id);
+      const at = arrange === "free" && c.at ? c.at : { x: b.x, y: b.y };
+      return { ...b, x: at.x, y: at.y };
+    });
+    const hasPhoto = !!(photo && photo.src);
+    let ox = 0;
+    let oz = 0;
+    if (!hasPhoto && raw.length) {
+      const minX = Math.min(...raw.map((b) => b.x));
+      const minY = Math.min(...raw.map((b) => b.y));
+      ox = (minX + Math.max(...raw.map((b) => b.x + b.w))) / 2;
+      oz = (minY + Math.max(...raw.map((b) => b.y + b.h))) / 2;
+    }
+    return raw.map((b) => ({ props: b.props, cx: b.x + b.w / 2 - ox, cz: b.y + b.h / 2 - oz, rot: b.rot }));
+  }
   function FacilityView({ courts, activeId, arrange, gap, onPick, onPlace, photo = DEFAULT_PLAN_PHOTO, fileBase = "project", exportState = null }) {
     const stageRef = (0, import_react.useRef)(null);
     const drag = (0, import_react.useRef)(null);
@@ -28156,6 +29245,7 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
     const [proposalOpen, setProposalOpen] = (0, import_react.useState)(false);
     const [site, setSite] = (0, import_react.useState)(DEFAULT_SITE);
     const [canvasTab, setCanvasTab] = (0, import_react.useState)("design");
+    const [view3d, setView3d] = (0, import_react.useState)("this");
     const nextId = (0, import_react.useRef)(1);
     const [folds, setFolds] = (0, import_react.useState)({ setup: true });
     const toggleFold = (id) => setFolds((f) => ({ ...f, [id]: !f[id] }));
@@ -28724,7 +29814,7 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
       gates: resolvedGates,
       meas
     };
-    const facilityCourts = canvasTab === "all" ? courtsList.map((c0) => {
+    const facilityCourts = canvasTab === "all" || canvasTab === "3d" ? courtsList.map((c0) => {
       const r = courtRows.find((x) => x.id === c0.id);
       return { id: r.id, name: r.name, at: c0.at, rot: c0.rot || 0, props: r.id === activeCourt ? surfaceProps : deriveDesign(r.d) };
     }) : [];
@@ -28972,7 +30062,8 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { role: "group", "aria-label": "Canvas view", className: "mb-4 flex w-fit rounded-md border border-slate-300 p-0.5", children: [
                   ["design", "Design view"],
                   ["all", courtsList.length > 1 ? `All courts (${courtsList.length})` : "All courts"],
-                  ["site", "Site photo"]
+                  ["site", "Site photo"],
+                  ["3d", "3D view"]
                 ].map(([id, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                   "button",
                   {
@@ -29002,6 +30093,34 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
                 canvasTab === "all" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FacilityView, { courts: facilityCourts, activeId: activeCourt, arrange, gap: planGap, onPick: switchCourt, onPlace: placeCourts, photo: planPhoto, fileBase: fileSlug(), exportState: planOutState }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PlanPhotoControls, { photo: planPhoto, setPhoto: setPlanPhoto })
+                ] }),
+                canvasTab === "3d" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                  courtsList.length > 1 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { role: "group", "aria-label": "3D view of", className: "mb-3 flex w-fit rounded-md border border-slate-300 p-0.5", children: [["this", "This court"], ["all", "All courts together"]].map(([id, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": view3d === id, onClick: () => setView3d(id), className: `rounded px-3 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[#236e45] ${view3d === id ? "bg-[#323c61] text-[#8fe0b0]" : "text-slate-600"}`, children: label }, id)) }),
+                  courtsList.length > 1 && view3d === "all" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    Court3DView,
+                    {
+                      place: () => facilityScene(facilityCourts, arrange, planGap, planPhoto),
+                      photoSrc: planPhoto.src,
+                      photoFt: planPhoto.ftAcross,
+                      title: projectName,
+                      fileBase: `${fileSlug()}-all-courts`
+                    },
+                    "3d-all"
+                  ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    Court3DView,
+                    {
+                      place: (aspect) => {
+                        const W = site.image.ftAcross;
+                        const at = site.image.src ? { cx: site.image.x * W, cz: site.image.y * (W / aspect), rot: site.image.rot } : { cx: 0, cz: 0, rot: 0 };
+                        return [{ props: surfaceProps, ...at }];
+                      },
+                      photoSrc: site.image.src,
+                      photoFt: site.image.ftAcross,
+                      title: projectName,
+                      fileBase: `${fileSlug()}${courtsList.length > 1 ? "-" + courtsList.find((c) => c.id === activeCourt).name.toLowerCase().replace(/[^a-z0-9]+/g, "-") : ""}`
+                    },
+                    "3d-one"
+                  )
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                   SitePhotoPanel,
