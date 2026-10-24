@@ -23963,7 +23963,7 @@
   ];
   var SCREEN_IDS = ["none", "custom", ...WINDSCREENS.map((w) => w.id)];
   var screenHexOf = (fence) => fence.screen === "none" || fence.screen === "custom" ? null : (WINDSCREENS.find((w) => w.id === fence.screen) || {}).hex || null;
-  var screenName = (fence) => fence.screen === "none" ? "None" : fence.screen === "custom" ? `Custom color requested: ${fence.customScreen || "to be confirmed"} (not shown in the drawing)` : (WINDSCREENS.find((w) => w.id === fence.screen) || {}).name || "None";
+  var screenName = (fence) => (fence.screen === "none" ? "None" : fence.screen === "custom" ? `Custom color requested: ${fence.customScreen || "to be confirmed"} (not shown in the drawing)` : (WINDSCREENS.find((w) => w.id === fence.screen) || {}).name || "None") + (fence.screen !== "none" && fence.logo ? `, with your logo or graphic${fence.logoText ? ` (${fence.logoText})` : ""} (artwork to be supplied, not shown in the drawing)` : "");
   var OFF_SETS = () => ({
     tennis: { on: false, color: "#ffffff" },
     pickleball: { on: false, color: "#fda620" },
@@ -24214,14 +24214,45 @@
     volleyNet: { kind: "fixed", name: "Volleyball net", sport: "volleyball", span: 32.8 },
     led: { kind: "flex", name: "LED lighting pole", max: 8, edges: SIDES, typical: [3, 12], ref: null, outsideFence: true },
     led2: { kind: "flex", name: "LED pole, two fixtures", plural: "LED poles, two fixtures", max: 8, edges: SIDES, typical: [3, 12], ref: null, outsideFence: true, fixtures: 2 },
-    goal: { kind: "flex", name: "Basketball goal", max: 4, edges: SIDES, typical: [4, 10], ref: ["basketball", "basketballHalf"] },
+    goal: { kind: "flex", name: "Basketball goal", max: 4, edges: SIDES, typical: [2, 6], ref: ["basketball", "basketballHalf"] },
     futsalGoal: { kind: "flex", name: "Futsal goal", max: 4, edges: SIDES, typical: [1, 4], ref: ["futsal"], half: 4.9 },
     /* Site furniture drawn as a footprint that runs parallel to the court side it sits beside.
        PLACEHOLDERS: footprint sizes and usual setbacks are assumptions, not confirmed by Master Systems. */
     bench: { kind: "flex", name: "Bench", plural: "Benches", max: 8, edges: SIDES, typical: [3, 10], ref: null, shape: { len: 7, depth: 1.5, fill: "#c8a46e" }, defEdge: "south" },
-    practiceWall: { kind: "flex", name: "Practice wall", plural: "Practice walls", max: 2, edges: SIDES, typical: [4, 20], ref: null, shape: { len: 20, depth: 1, fill: "#9aa3b2" }, defEdge: "north", defFrac: 0.5 }
+    practiceWall: { kind: "flex", name: "Practice wall", plural: "Practice walls", max: 2, edges: SIDES, typical: [4, 20], ref: null, shape: { len: 20, depth: 1, fill: "#9aa3b2" }, defEdge: "north", defFrac: 0.5 },
+    /* More products from the Master Systems accessories pages. PLACEHOLDER footprints, not confirmed by Master Systems. */
+    umpireChair: { kind: "flex", name: "Umpire chair", plural: "Umpire chairs", max: 4, edges: SIDES, typical: [2, 6], ref: null, shape: { len: 3, depth: 3, fill: "#3a3f47" }, defEdge: "south", defFrac: 0.5 },
+    bleachers: { kind: "flex", name: "Bleachers", plural: "Bleachers", max: 4, edges: SIDES, typical: [6, 20], ref: null, shape: { len: 15, depth: 7, fill: "#9aa3b2" }, defEdge: "south" },
+    ballMachine: { kind: "flex", name: "Tennis ball machine", plural: "Tennis ball machines", max: 4, edges: SIDES, typical: [3, 12], ref: null, shape: { len: 2.2, depth: 1.8, fill: "#e8590c" }, defEdge: "north" },
+    courtTable: { kind: "flex", name: "Courtside table", plural: "Courtside tables", max: 8, edges: SIDES, typical: [3, 10], ref: null, shape: { len: 3, depth: 2, fill: "#c8a46e" }, defEdge: "south", defFrac: 0.25 }
+  };
+  var BENCH_STYLES = {
+    single: { name: "Single-sided basic bench", depth: 1.1 },
+    back: { name: "Courtside bench with backrest", depth: 1.5 },
+    doubleBack: { name: "Double-sided bench with backrest", depth: 2.7 },
+    doubleFlat: { name: "Double-sided flat bench (tennis court bench)", depth: 2 }
+  };
+  var CANOPY_COLORS = { green: { name: "Forest green", hex: "#1f6b45" }, blue: { name: "Pacific Blue", hex: "#2a6fa8" }, custom: { name: "Custom color (request)", hex: "#1f6b45" } };
+  var SCORE_COLORS = { white: "White panels, dark green text", green: "Dark green panels, white text" };
+  var OTHER_PRODUCTS = [
+    ["squeegee", "Squeegees (water removal)"],
+    ["roller", "Sponge rollers (water removal)"],
+    ["mop", "Court mops"],
+    ["cleaning", "Court cleaning and maintenance products"],
+    ["aids", "Teaching and practice aids"],
+    ["paddles", "Pickleball paddles and balls"],
+    ["multiNet", "Multi-purpose net system (one court, more than one sport)"],
+    ["bevHolder", "Beverage holders"]
+  ];
+  var shapeOf = (p) => {
+    const sh = ACCESSORIES[p.type].shape;
+    return p.type === "bench" && sh ? { ...sh, depth: BENCH_STYLES[p.style] ? BENCH_STYLES[p.style].depth : sh.depth } : sh;
   };
   var SHADE = { len: 12, depth: 8 };
+  var GOAL_BOARD = 4;
+  var RIM_HEIGHTS = [7.5, 8, 8.5, 9, 9.5, 10];
+  var GOAL_RIM = 5.25;
+  var GOAL_RIM_R = 0.75;
   var AUTO_GOAL = { goal: ["basketball", "basketballHalf"], futsalGoal: ["futsal"] };
   var goalTypeFor = (sportId) => Object.keys(AUTO_GOAL).find((t) => AUTO_GOAL[t].includes(sportId)) || null;
   var ACCESSORIES = Object.fromEntries(
@@ -24275,16 +24306,21 @@
   })[edge];
   var resolveFlex = (item, dims, courts, fallback, fenceOn = false) => {
     const a = ACCESSORIES[item.type];
+    if (item.type === "practiceWall" && !fenceOn) return { ...item, ok: false, reason: "The practice wall attaches to the chain-link fence. Turn the fence on to show it." };
     const own = item.court && courts.find((c) => c.key === item.court);
     const R = own ? { x0: own.x0, y0: own.y0, l: own.l, w: own.w, turn: own.turn, scale: own.scale || 1 } : refRect(a, courts, dims, fallback);
     let edge = a.edges.includes(item.edge) ? item.edge : a.edges[0];
-    const follow = item.auto && R.turn !== void 0;
+    const follow = (item.auto || item.type === "goal" && own) && R.turn !== void 0;
     if (follow) edge = R.turn === 0 ? { north: "west", south: "east" }[edge] || edge : { west: "north", east: "south" }[edge] || edge;
     if (follow && own && own.sport === "basketballHalf") edge = R.turn === 0 ? own.flip ? "east" : "west" : own.flip ? "south" : "north";
     const b = flexBounds(a, edge, R, dims, fenceOn);
     if (!b.ok) return { ...item, edge, R, b, ok: false, reason: "Not enough border on this side. Widen the surface." };
     const along = follow ? clamp(r1(b.len / 2), b.aMin, b.aMax) : clamp(item.along, b.aMin, b.aMax);
-    const out = clamp(item.out, b.oMin, b.oMax);
+    let out = clamp(item.out, b.oMin, b.oMax);
+    const flush = item.type === "practiceWall";
+    const integrated = item.type === "futsalGoal" && item.fenceInt === true && fenceOn;
+    if (flush) out = r1(Math.max(0, b.room - a.shape.depth / 2));
+    if (integrated) out = r1(Math.max(0, b.room));
     return {
       ...item,
       edge,
@@ -24293,8 +24329,10 @@
       along,
       out,
       ok: true,
+      ...flush ? { flush: true } : {},
+      ...integrated ? { integrated: true } : {},
       pos: edgeXY(edge, R, along, out),
-      offTypical: !b.outside && (out < a.typical[0] || out > a.typical[1]),
+      offTypical: !flush && !integrated && !b.outside && (out < a.typical[0] || out > a.typical[1]),
       outside: !!b.outside
     };
   };
@@ -24467,13 +24505,14 @@
     ["courts", "Court sizes and edge margins"],
     ["gates", "Gates"],
     ["accessories", "Goals, poles, benches and nets"],
+    ["setbacks", "Setbacks from the court lines"],
     ["fence", "Fence runs"]
   ];
   var DEFAULT_MEAS = {
     on: true,
     unit: "ftin",
     datum: "nearest",
-    layers: { overall: true, zones: true, courts: true, gates: true, accessories: true, fence: false, compass: true }
+    layers: { overall: true, zones: true, courts: true, gates: true, accessories: true, setbacks: false, fence: false, compass: true }
   };
   var DATUMS = {
     nearest: "Nearest corner",
@@ -24575,12 +24614,12 @@
         const as = unver && (refCourts.length ? refCourts.some((c) => !SPORTS[c.sport].confirmed) : layout.courts.length === 0 || layout.courts.some((c) => !SPORTS[c.sport].confirmed));
         const horiz = p.edge === "north" || p.edge === "south";
         const nm = `${a.name} ${flexPlaced.filter((q) => q.type === p.type).indexOf(p) + 1}`;
-        if (p.out > 0.4) {
+        if (L.setbacks && p.out > 0.4 && !p.flush && !p.integrated) {
           D("accessories", `${p.uid}-s`, `${nm}: setback from court line`, edgeXY(p.edge, p.R, p.along, 0), p.pos, horiz ? { x: 1.8, y: 0 } : { x: 0, y: 1.8 }, p.out, as);
         }
         const wallPt = { north: { x: p.pos.x, y: 0 }, south: { x: p.pos.x, y: w }, west: { x: 0, y: p.pos.y }, east: { x: l, y: p.pos.y } }[p.edge];
         const wallVal = Math.abs({ north: p.pos.y, south: w - p.pos.y, west: p.pos.x, east: l - p.pos.x }[p.edge]);
-        if (wallVal > 0.4) {
+        if (wallVal > 0.4 && !p.flush) {
           D("accessories", `${p.uid}-w`, `${nm}: ${sideCompass(p.edge, north)} side to ${a.shape ? a.name.toLowerCase() : "pole"}`, wallPt, p.pos, horiz ? { x: -1.8, y: 0 } : { x: 0, y: -1.8 }, wallVal, as);
         }
         const t = horiz ? p.pos.x : p.pos.y;
@@ -24736,6 +24775,11 @@
       scorekeepers: nets.filter((n) => n.score).length,
       benches: flexPlaced.filter((p) => p.type === "bench").length,
       practiceWalls: flexPlaced.filter((p) => p.type === "practiceWall").length,
+      benchStyles: Object.keys(BENCH_STYLES).map((k) => ({ id: k, n: flexPlaced.filter((p) => p.type === "bench" && (p.style || "back") === k).length })).filter((b) => b.n),
+      umpireChairs: flexPlaced.filter((p) => p.type === "umpireChair").length,
+      bleachers: flexPlaced.filter((p) => p.type === "bleachers").length,
+      ballMachines: flexPlaced.filter((p) => p.type === "ballMachine").length,
+      courtTables: flexPlaced.filter((p) => p.type === "courtTable").length,
       nets: nets.length
     };
   }
@@ -24762,7 +24806,11 @@
     if (q.futsalGoals) rows.push(["Futsal goals", `${q.futsalGoals}`]);
     if (q.poles) rows.push(["LED lighting poles", `${q.poles}`]);
     if (q.poles2) rows.push(["LED lighting poles, two fixtures", `${q.poles2}`]);
-    if (q.benches) rows.push(["Benches", `${q.benches}`]);
+    if (q.benches) q.benchStyles.forEach((b) => rows.push([BENCH_STYLES[b.id].name, `${b.n}`]));
+    if (q.umpireChairs) rows.push(["Umpire chairs", `${q.umpireChairs}`]);
+    if (q.bleachers) rows.push(["Bleachers", `${q.bleachers}`]);
+    if (q.ballMachines) rows.push(["Tennis ball machines", `${q.ballMachines}`]);
+    if (q.courtTables) rows.push(["Courtside tables", `${q.courtTables}`]);
     if (q.practiceWalls) rows.push(["Practice walls", `${q.practiceWalls}`]);
     if (q.shades) rows.push(["Bench shade structures", `${q.shades}`]);
     if (q.scorekeepers) rows.push(["Digital scorekeepers (net mounted)", `${q.scorekeepers}`]);
@@ -24882,7 +24930,7 @@
     const placed = (Array.isArray(p.placed) ? p.placed : []).filter((x) => x && ACCESSORIES[x.type] && ACCESSORIES[x.type].kind === "flex").filter((x) => (counts[x.type] = (counts[x.type] || 0) + 1) <= ACCESSORIES[x.type].max).map((x, i) => {
       const uid = numIn(x.uid, 1, 1e9, 1e3 + i);
       maxUid = Math.max(maxUid, uid);
-      return { uid, type: x.type, edge: oneOf(x.edge, SIDES, "north"), along: numIn(x.along, 0, MAX, 0), out: numIn(x.out, 0, MAX, 0), auto: boolOr(x.auto, false), ...x.type === "bench" && x.shade === true ? { shade: true } : {}, ...typeof x.court === "string" ? { court: x.court.slice(0, 60) } : {} };
+      return { uid, type: x.type, edge: oneOf(x.edge, SIDES, "north"), along: numIn(x.along, 0, MAX, 0), out: numIn(x.out, 0, MAX, 0), auto: boolOr(x.auto, false), ...x.type === "futsalGoal" && x.fenceInt === true ? { fenceInt: true } : {}, ...x.type === "goal" && x.adj === true ? { adj: true, rimH: RIM_HEIGHTS.includes(Number(x.rimH)) ? Number(x.rimH) : 10 } : {}, ...x.type === "bench" && x.shade === true ? { shade: true } : {}, ...x.type === "bench" && BENCH_STYLES[x.style] && x.style !== "back" ? { style: x.style } : {}, ...x.type === "bench" && x.shade === true && CANOPY_COLORS[x.canopy] && x.canopy !== "green" ? { canopy: x.canopy } : {}, ...x.type === "bench" && x.shade === true && x.logo === true ? { logo: true } : {}, ...typeof x.court === "string" ? { court: x.court.slice(0, 60) } : {} };
     });
     const fx = p.fixedOn || {};
     const mv = p.meas || {};
@@ -24939,13 +24987,26 @@
         divider,
         gates,
         placed,
-        fixedOn: { tennisNet: boolOr(fx.tennisNet, true), pickleNet: boolOr(fx.pickleNet, false), volleyNet: boolOr(fx.volleyNet, false), scorekeeper: boolOr(fx.scorekeeper, false) },
+        fixedOn: {
+          tennisNet: boolOr(fx.tennisNet, true),
+          pickleNet: boolOr(fx.pickleNet, false),
+          volleyNet: boolOr(fx.volleyNet, false),
+          scorekeeper: boolOr(fx.scorekeeper, false),
+          scoreColor: oneOf(fx.scoreColor, Object.keys(SCORE_COLORS), "white"),
+          pickleType: oneOf(fx.pickleType, ["permanent", "portable"], "permanent"),
+          banner: boolOr(fx.banner, false),
+          bannerText: strOr(fx.bannerText, 80),
+          canopyCustom: strOr(fx.canopyCustom, 60),
+          products: Object.fromEntries(OTHER_PRODUCTS.map(([k]) => [k, boolOr(fx.products && fx.products[k], false)]))
+        },
         fence: {
           on: boolOr(fc.on, false),
           height: oneOf(fc.height, FENCE_HEIGHTS, 6),
           /* older projects saved other colors: they open as black */
           screen: oneOf(fc.screen, SCREEN_IDS, "black"),
-          customScreen: strOr(fc.customScreen, 60)
+          customScreen: strOr(fc.customScreen, 60),
+          logo: boolOr(fc.logo, false),
+          logoText: strOr(fc.logoText, 80)
         },
         notes: strOr(p.notes, 600),
         convert: boolOr(p.convert, false),
@@ -25099,11 +25160,45 @@
   function Tag({ x, y, text, size = 2.1, rot = false }) {
     const w = text.length * size * 0.56 + size * 0.9;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { pointerEvents: "none", transform: rot ? `rotate(-90 ${x} ${y})` : void 0, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: x - w / 2, y: y - size * 0.95, width: w, height: size * 1.4, rx: size * 0.2, fill: "#f1f5f9", opacity: "0.94", stroke: "#323c61", strokeWidth: "0.1" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: x - w / 2, y: y - size * 0.95, width: w, height: size * 1.4, rx: size * 0.2, fill: "#ffffff", opacity: "0.97", stroke: "#323c61", strokeWidth: "0.12" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", { x, y: y + size * 0.05, fontSize: size, textAnchor: "middle", fill: "#323c61", stroke: "none", fontFamily: "system-ui, sans-serif", children: text })
     ] });
   }
-  function Dimension({ it, k = 1 }) {
+  function spreadTags(items, size) {
+    const spots = {};
+    const boxes = [];
+    const hit = (b, o) => Math.abs(b.x - o.x) < (b.w + o.w) / 2 + 0.4 && Math.abs(b.y - o.y) < (b.h + o.h) / 2 + 0.3;
+    items.forEach((it) => {
+      if (it.type !== "dim" && it.type !== "tag") return;
+      const tw = it.text.length * size * 0.56 + size * 0.9;
+      const th = size * 1.4;
+      let cands;
+      let turned = false;
+      if (it.type === "dim") {
+        const o = it.off;
+        const A = { x: it.a.x + o.x, y: it.a.y + o.y };
+        const B = { x: it.b.x + o.x, y: it.b.y + o.y };
+        turned = o.x !== 0 && o.y === 0;
+        cands = [0.5, 0.28, 0.72, 0.14, 0.86].map((t) => ({ x: A.x + (B.x - A.x) * t, y: A.y + (B.y - A.y) * t }));
+        const len = Math.hypot(B.x - A.x, B.y - A.y) || 1;
+        const nx = -(B.y - A.y) / len;
+        const ny = (B.x - A.x) / len;
+        const st = size * 1.6;
+        [1, -1, 2, -2].forEach((m) => [0.5, 0.28, 0.72].forEach((t) => cands.push({ x: A.x + (B.x - A.x) * t + nx * st * m, y: A.y + (B.y - A.y) * t + ny * st * m })));
+      } else {
+        const st = size * 1.7;
+        cands = [[0, 0], [0, -st], [0, st], [tw, 0], [-tw, 0], [0, -2 * st], [0, 2 * st]].map(([dx, dy]) => ({ x: it.x + dx, y: it.y + dy }));
+      }
+      const w = turned ? th : tw;
+      const h = turned ? tw : th;
+      const free = cands.find((c) => !boxes.some((b) => hit({ x: c.x, y: c.y, w, h }, b)));
+      const pick = free || cands[0];
+      boxes.push({ x: pick.x, y: pick.y, w, h });
+      spots[it.key] = pick;
+    });
+    return spots;
+  }
+  function Dimension({ it, k = 1, at = null }) {
     const o = it.off;
     const A = { x: it.a.x + o.x, y: it.a.y + o.y };
     const B = { x: it.b.x + o.x, y: it.b.y + o.y };
@@ -25121,7 +25216,7 @@
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { "data-dim": it.key, children: [
       paint("#f1f5f9", 3),
       paint(col, 1),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, text: it.text, size: 1.7 * k, rot: o.x !== 0 && o.y === 0 })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { x: at ? at.x : (A.x + B.x) / 2, y: at ? at.y : (A.y + B.y) / 2, text: it.text, size: 2 * k, rot: o.x !== 0 && o.y === 0 })
     ] });
   }
   function CourtSurface({
@@ -25340,11 +25435,12 @@
               const vert = n.x1 === n.x2;
               const cx = n.x1 + (vert ? 0 : Math.sign(n.x1 - n.x2) * 2.2);
               const cy = n.y1 + (vert ? Math.sign(n.y1 - n.y2) * 2.2 : 0);
-              const w = vert ? 1.8 : 2.8;
-              const h = vert ? 2.8 : 1.8;
+              const w = vert ? 1 : 2.4;
+              const h = vert ? 2.4 : 1;
+              const whitePanel = n.scoreColor !== "green";
               return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { "data-scorekeeper": "1", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: cx - w / 2, y: cy - h / 2, width: w, height: h, rx: "0.2", fill: "#1f2937", stroke: "#323c61", strokeWidth: "0.25" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: cx - w / 2 + 0.25, y: cy - h / 2 + 0.25, width: w - 0.5, height: h - 0.5, rx: "0.1", fill: "#8fe0b0" })
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: cx - w / 2, y: cy - h / 2, width: w, height: h, rx: "0.2", fill: "#1f4d36", stroke: "#323c61", strokeWidth: "0.25" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: cx - w / 2 + 0.15, y: cy - h / 2 + 0.15, width: w - 0.3, height: h - 0.3, rx: "0.1", fill: whitePanel ? "#eef2ee" : "#2f7d56" })
               ] });
             })()
           ] }, `${n.id}-${i}`)),
@@ -25352,7 +25448,7 @@
             const d = DIR[p.edge];
             const { x, y } = p.pos;
             const isGoal = !!AUTO_GOAL[p.type];
-            const shape = ACCESSORIES[p.type].shape;
+            const shape = shapeOf(p);
             if (shape) {
               const hz = p.edge === "north" || p.edge === "south";
               const rw = hz ? shape.len : shape.depth;
@@ -25360,23 +25456,26 @@
               const sh = p.shade ? { w: hz ? SHADE.len : SHADE.depth, h: hz ? SHADE.depth : SHADE.len } : null;
               return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { "data-flex": p.uid, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: x - rw / 2, y: y - rh / 2, width: rw, height: rh, fill: shape.fill, stroke: "#323c61", strokeWidth: "0.35", rx: "0.2" }),
-                sh && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { "data-shade": p.uid, x: x - sh.w / 2, y: y - sh.h / 2, width: sh.w, height: sh.h, rx: "0.8", fill: "#236e45", fillOpacity: "0.28", stroke: "#236e45", strokeWidth: "0.35", strokeDasharray: "1 0.6" }),
-                p.type === "practiceWall" && !mOn && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { x: x + (hz ? 0 : 4), y: y + (hz ? 3 : 0), text: "Practice wall", size: 1.7 * k }),
+                sh && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { "data-shade": p.uid, x: x - sh.w / 2, y: y - sh.h / 2, width: sh.w, height: sh.h, rx: "0.8", fill: (CANOPY_COLORS[p.canopy] || CANOPY_COLORS.green).hex, fillOpacity: "0.28", stroke: (CANOPY_COLORS[p.canopy] || CANOPY_COLORS.green).hex, strokeWidth: "0.35", strokeDasharray: "1 0.6" }),
+                p.type !== "bench" && !mOn && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { x: x + (hz ? 0 : rw / 2 + 2.5), y: y + (hz ? rh / 2 + 2 : 0), text: ACCESSORIES[p.type].name, size: 1.7 * k }),
                 p.offTypical && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: x - rw / 2 - 0.6, y: y - rh / 2 - 0.6, width: rw + 1.2, height: rh + 1.2, fill: "none", stroke: "#b45309", strokeWidth: "0.3", strokeDasharray: "0.6 0.4" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Handle, { kind: "flex", id: p.uid, x, y, label: `${ACCESSORIES[p.type].name}: drag to move` })
               ] }, p.uid);
             }
             const half = Math.max(1.5, (ACCESSORIES[p.type].half || 3) * (p.R.scale || 1));
-            const armLen = isGoal ? p.out : 2.5;
+            const gs = p.R.scale || 1;
+            const bball2 = p.type === "goal";
+            const armLen = bball2 ? p.out + GOAL_BOARD * gs : isGoal ? p.out : 2.5;
             const ex = x + d.x * armLen;
             const ey = y + d.y * armLen;
             return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { "data-flex": p.uid, stroke: "#323c61", strokeWidth: "0.3", children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { stroke: "#f1f5f9", strokeWidth: isGoal ? 1.3 : 1.5, strokeLinecap: "round", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: x, y1: y, x2: ex, y2: ey }),
-                isGoal && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: ex - d.y * half, y1: ey + d.x * half, x2: ex + d.y * half, y2: ey - d.x * half, strokeWidth: "1.6" })
+                isGoal && !bball2 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: ex - d.y * half, y1: ey + d.x * half, x2: ex + d.y * half, y2: ey - d.x * half, strokeWidth: "1.6" })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: x, y1: y, x2: ex, y2: ey, strokeWidth: isGoal ? 0.5 : 0.7 }),
-              isGoal && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: ex - d.y * half, y1: ey + d.x * half, x2: ex + d.y * half, y2: ey - d.x * half, strokeWidth: "0.8" }),
+              isGoal && !bball2 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: ex - d.y * half, y1: ey + d.x * half, x2: ex + d.y * half, y2: ey - d.x * half, strokeWidth: "0.8" }),
+              p.type === "futsalGoal" && p.integrated && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("polygon", { "data-integrated": p.uid, points: [[ex - d.y * half, ey + d.x * half], [ex + d.y * half, ey - d.x * half], [x + d.y * half, y - d.x * half], [x - d.y * half, y + d.x * half]].map((q) => q.join(",")).join(" "), fill: "#dbe7f3", fillOpacity: "0.7", stroke: "#323c61", strokeWidth: "0.3", strokeDasharray: "0.8 0.5" }),
               ACCESSORIES[p.type].fixtures === 2 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: ex - d.y * 1.8, y1: ey + d.x * 1.8, x2: ex + d.y * 1.8, y2: ey - d.x * 1.8, stroke: "#f1f5f9", strokeWidth: "1.3", strokeLinecap: "round" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: ex - d.y * 1.8, y1: ey + d.x * 1.8, x2: ex + d.y * 1.8, y2: ey - d.x * 1.8, stroke: "#323c61", strokeWidth: "0.5" }),
@@ -25438,7 +25537,10 @@
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Handle, { kind: "gate", id: g.uid, x: G.mid.x, y: G.mid.y, r: Math.max(2, g.width / 2), label: `Gate ${gi + 1}: drag along the fence` })
             ] }, g.uid);
           }),
-          items.map((it) => it.type === "dim" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Dimension, { it, k }, it.key) : it.type === "tag" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { x: it.x, y: it.y, text: it.text, size: 1.7 * k }, it.key) : null),
+          (() => {
+            const spots = spreadTags(items, 2 * k);
+            return items.map((it) => it.type === "dim" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Dimension, { it, k, at: spots[it.key] }, it.key) : it.type === "tag" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { x: spots[it.key].x, y: spots[it.key].y, text: it.text, size: 2 * k }, it.key) : null);
+          })(),
           mOn && meas.datum !== "nearest" && (() => {
             const cx = meas.datum.endsWith("w") ? 0 : dims.l;
             const cy = meas.datum.startsWith("n") ? 0 : dims.w;
@@ -25561,6 +25663,25 @@
             ),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "mt-1 block text-slate-500", children: "Written on the proposal only. The drawing does not change." })
           ] })
+        ] }),
+        fence.screen !== "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mb-3", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2 text-xs text-slate-700", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!fence.logo, "aria-label": "Windscreen logo or graphic", onChange: (e) => patch({ logo: e.target.checked }), className: "h-4 w-4 accent-[#236e45]" }),
+            "Add your logo or graphic to the windscreen"
+          ] }),
+          fence.logo && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "input",
+            {
+              type: "text",
+              maxLength: 80,
+              value: fence.logoText || "",
+              "aria-label": "Windscreen logo wording",
+              placeholder: "Logo or wording to print",
+              onChange: (e) => patch({ logoText: e.target.value }),
+              className: "mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: "Screens are measured to your fence and made to fit. The edges are made to break away in very high straight-line winds to protect the fence. Written on the proposal only." })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(FencePreview, { height: fence.height, color: screenHex }),
         lengths && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "mt-2 text-xs text-slate-600", "data-testid": "fence-length", children: [
@@ -26461,11 +26582,14 @@
     const courts = layout.courts;
     const addReason = (type) => {
       const a = ACCESSORIES[type];
+      if (type === "practiceWall" && !fenceOn) return "Turn on the chain-link fence first. The practice wall attaches to it.";
       if (placements.filter((p) => p.type === type).length >= a.max) return `Limit of ${a.max} reached.`;
       const R = refRect(a, courts, dims, fallback);
       if (!a.edges.some((e) => flexBounds(a, e, R, dims, fenceOn).ok)) return "Not enough border room. Widen the surface.";
       return null;
     };
+    const canopyCustom = fixedOn.canopyCustom || "";
+    const setCanopyCustom = (v) => setFixedOn((s2) => ({ ...s2, canopyCustom: v }));
     const fixedIds = Object.keys(ACCESSORIES).filter((id) => ACCESSORIES[id].kind === "fixed");
     const flexIds = Object.keys(ACCESSORIES).filter((id) => ACCESSORIES[id].kind === "flex");
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { "aria-label": "Accessories", className: "mb-8", children: [
@@ -26511,13 +26635,40 @@
                 ),
                 "Digital scorekeeper"
               ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: anyNet ? `Mounted on a net post, just outside the court, on each net (${nNets}). It follows the net.` : "Turn on a net first. The scorekeeper mounts to the net post." })
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: anyNet ? `Mounted on a net post, just outside the court, on each net (${nNets}). It follows the net.` : "Turn on a net first. The scorekeeper mounts to the net post." }),
+              anyNet && fixedOn.scorekeeper && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-2 flex flex-wrap gap-1", role: "group", "aria-label": "Scorekeeper color", children: Object.entries(SCORE_COLORS).map(([k, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": (fixedOn.scoreColor || "white") === k, onClick: () => setFixedOn((s2) => ({ ...s2, scoreColor: k })), className: chip((fixedOn.scoreColor || "white") === k), children: label }, k)) })
             ] });
-          })()
+          })(),
+          (fixedOn.pickleNet || fixedOn.tennisNet) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "rounded border border-slate-300 px-3 py-2", "data-testid": "net-options", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-sm font-medium", children: "Net options" }),
+            fixedOn.pickleNet && !netStatus("pickleNet", courts) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap items-center gap-1", role: "group", "aria-label": "Pickleball net system", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "mr-1 text-xs text-slate-600", children: "Pickleball net" }),
+              [["permanent", "Permanent system"], ["portable", "Portable system"]].map(([k, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": (fixedOn.pickleType || "permanent") === k, onClick: () => setFixedOn((s2) => ({ ...s2, pickleType: k })), className: chip((fixedOn.pickleType || "permanent") === k), children: label }, k))
+            ] }),
+            fixedOn.tennisNet && !netStatus("tennisNet", courts) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2 text-xs text-slate-700", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!fixedOn.banner, onChange: (e) => setFixedOn((s2) => ({ ...s2, banner: e.target.checked })), className: "h-4 w-4 accent-[#236e45]" }),
+                "Custom tennis net banner (logo, team or club name)"
+              ] }),
+              fixedOn.banner && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  type: "text",
+                  maxLength: 80,
+                  value: fixedOn.bannerText || "",
+                  "aria-label": "Net banner wording",
+                  placeholder: "Wording or logo to print",
+                  onChange: (e) => setFixedOn((s2) => ({ ...s2, bannerText: e.target.value })),
+                  className: "mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm"
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: "Net posts and straps come with each net. Banners are written on the proposal only." })
+            ] })
+          ] })
         ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: "Goals, poles, benches and practice wall" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: "Goals, poles, benches, seating and courtside items" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mb-2 text-xs text-slate-500", children: "Put each one on any side, anywhere along it, at any setback. Drag it on the drawing or type exact numbers. Each one is flagged, not blocked, if it ends up closer or farther than the usual range. The usual ranges are not confirmed by Master Systems yet." }),
         flexIds.map((type) => {
           const a = ACCESSORIES[type];
@@ -26545,19 +26696,58 @@
                 ] })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-2 flex flex-wrap gap-1", role: "group", "aria-label": `${a.name} ${i + 1} side`, children: a.edges.map((e) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": p.edge === e, onClick: () => onPatch(p.uid, { edge: e }), className: chip(p.edge === e), children: SIDE_LABEL[e] }, e)) }),
-              type === "bench" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "mt-2 flex items-center gap-2 text-xs text-slate-700", children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!p.shade, "aria-label": `Bench ${i + 1} shade structure`, onChange: (e) => onPatch(p.uid, { shade: e.target.checked ? true : void 0 }), className: "h-4 w-4 accent-[#236e45]" }),
-                "Shade structure over this bench (",
-                SHADE.len,
-                " x ",
-                SHADE.depth,
-                " ft roof)"
+              type === "futsalGoal" && fenceOn && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "mt-2 flex items-center gap-2 text-xs text-slate-700", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!p.fenceInt, "aria-label": `Futsal goal ${i + 1} built into the fence`, onChange: (e) => onPatch(p.uid, { fenceInt: e.target.checked ? true : void 0 }), className: "h-4 w-4 accent-[#236e45]" }),
+                "Build this goal into the fence (the netting runs back to the fence)"
+              ] }),
+              type === "goal" && p.ok && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 text-xs text-slate-700", children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!p.adj, "aria-label": `Basketball goal ${i + 1} adjustable height`, onChange: (e) => onPatch(p.uid, e.target.checked ? { adj: true, rimH: p.rimH || 10 } : { adj: void 0, rimH: void 0 }), className: "h-4 w-4 accent-[#236e45]" }),
+                  "Adjustable-height goal"
+                ] }),
+                p.adj && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-1 flex flex-wrap items-center gap-1", role: "group", "aria-label": `Basketball goal ${i + 1} rim height`, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Rim height" }),
+                  RIM_HEIGHTS.map((h) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", "aria-pressed": (p.rimH || 10) === h, onClick: () => onPatch(p.uid, { rimH: h }), className: chip((p.rimH || 10) === h), children: [
+                    h,
+                    " ft"
+                  ] }, h))
+                ] })
+              ] }),
+              type === "goal" && p.ok && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "mt-2 text-xs text-slate-600", "data-testid": "goal-reach", children: [
+                "The backboard hangs ",
+                GOAL_BOARD,
+                " ft inside the baseline, so the arm from the pole is ",
+                r1(p.out + GOAL_BOARD),
+                " ft long. A smaller setback gives a shorter arm. Check the reach with the goal maker."
+              ] }),
+              type === "bench" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-2 flex flex-wrap gap-1", role: "group", "aria-label": `Bench ${i + 1} style`, children: Object.entries(BENCH_STYLES).map(([k, st]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": (p.style || "back") === k, onClick: () => onPatch(p.uid, { style: k === "back" ? void 0 : k }), className: chip((p.style || "back") === k), children: st.name }, k)) }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: "Steel frame with a black powder coat and plastic composite seat boards." }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "mt-2 flex items-center gap-2 text-xs text-slate-700", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!p.shade, "aria-label": `Bench ${i + 1} shade structure`, onChange: (e) => onPatch(p.uid, { shade: e.target.checked ? true : void 0, canopy: void 0, logo: void 0 }), className: "h-4 w-4 accent-[#236e45]" }),
+                  "Shade structure over this bench (",
+                  SHADE.len,
+                  " x ",
+                  SHADE.depth,
+                  " ft roof)"
+                ] }),
+                p.shade && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 pl-6 text-xs text-slate-700", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-wrap gap-1", role: "group", "aria-label": `Bench ${i + 1} canopy color`, children: Object.entries(CANOPY_COLORS).map(([k, c]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": (p.canopy || "green") === k, onClick: () => onPatch(p.uid, { canopy: k === "green" ? void 0 : k }), className: chip((p.canopy || "green") === k), children: c.name }, k)) }),
+                  p.canopy === "custom" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "text", maxLength: 60, value: canopyCustom || "", "aria-label": "Custom canopy color", placeholder: "For example: burgundy", onChange: (e) => setCanopyCustom(e.target.value), className: "mt-1 w-full rounded border border-slate-300 px-2 py-1 text-sm" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "mt-2 flex items-center gap-2", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!p.logo, "aria-label": `Bench ${i + 1} canopy logo imprint`, onChange: (e) => onPatch(p.uid, { logo: e.target.checked ? true : void 0 }), className: "h-4 w-4 accent-[#236e45]" }),
+                    "Logo imprint on the canopy (artwork supplied later)"
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-slate-500", children: "Colors and logos are written on the proposal. A custom color is not shown in the drawing." })
+                ] })
               ] }),
               p.ok ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                p.flush && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-2 text-xs text-slate-600", children: "Attached to the fence. Slide it along the side to place it." }),
+                p.integrated && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-2 text-xs text-slate-600", children: "Built into the fence. Slide it along the side to place it." }),
                 [
                   ["Along the side", "along", p.b.aMin, p.b.aMax],
                   ["Setback from the court", "out", p.b.oMin, p.b.oMax]
-                ].map(([label, key, lo, hi]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 text-xs text-slate-600", children: [
+                ].filter(([, key]) => !(key === "out" && (p.flush || p.integrated))).map(([label, key, lo, hi]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 text-xs text-slate-600", children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex items-center justify-between gap-2", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex items-center gap-1", children: [
@@ -26591,6 +26781,22 @@
             ] }, p.uid))
           ] }, type);
         })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mt-5", "data-testid": "other-products", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: "Other products to quote" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mb-2 text-xs text-slate-500", children: "These are not drawn. Tick any you want on the quote. They are listed on the proposal and the sheets." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-col gap-1", children: OTHER_PRODUCTS.map(([k, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2 text-sm", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "input",
+            {
+              type: "checkbox",
+              checked: !!(fixedOn.products && fixedOn.products[k]),
+              onChange: (e) => setFixedOn((s2) => ({ ...s2, products: { ...s2.products || {}, [k]: e.target.checked } })),
+              className: "h-4 w-4 accent-[#236e45]"
+            }
+          ),
+          label
+        ] }, k)) })
       ] })
     ] });
   }
@@ -26604,7 +26810,7 @@
     }
     return hex;
   };
-  function buildSpec({ sportId, dims, base, main, border, bball = DEFAULT_BBALL, north = 90, layout, divider, fixedActive, nets, flexPlaced, fence, screenHex, gates, notes, site, meas = DEFAULT_MEAS, measures = [] }) {
+  function buildSpec({ sportId, dims, base, main, border, bball = DEFAULT_BBALL, north = 90, layout, divider, fixedActive, nets, flexPlaced, fence, screenHex, gates, notes, site, meas = DEFAULT_MEAS, measures = [], extras = {} }) {
     const sport = SPORTS[sportId];
     const u = meas.unit;
     const color = (hex, role) => {
@@ -26623,7 +26829,7 @@
       counts[p.type] = (counts[p.type] || 0) + 1;
       return {
         name: `${ACCESSORIES[p.type].name} ${counts[p.type]}`,
-        detail: `${SIDE_LABEL[p.edge]}, ${fmtLen(p.along, u)} along the side, ${fmtLen(p.out, u)} setback from the court` + (p.shade ? `, with a ${fmtLen(SHADE.len, u)} x ${fmtLen(SHADE.depth, u)} shade structure` : "") + (p.offTypical ? ` (${usualNote(p)}: Master Systems to confirm)` : "")
+        detail: `${SIDE_LABEL[p.edge]}, ${fmtLen(p.along, u)} along the side` + (p.flush ? ", attached to the fence" : `, ${fmtLen(p.out, u)} setback from the court`) + (p.integrated ? ", goal netting built into the fence" : "") + (p.type === "goal" ? `, ${fmtLen(p.out + GOAL_BOARD, u)} from the pole to the backboard` : "") + (p.type === "goal" && p.adj ? `, adjustable-height goal, rim set at ${fmtLen(p.rimH || 10, u)}` : "") + (p.type === "bench" ? `, ${BENCH_STYLES[p.style] ? BENCH_STYLES[p.style].name.toLowerCase() : "courtside bench with backrest"} (steel frame, plastic composite seat boards)` : "") + (p.shade ? `, with a ${fmtLen(SHADE.len, u)} x ${fmtLen(SHADE.depth, u)} shade canopy, ${p.canopy === "custom" ? `custom canvas color requested: ${extras.canopyCustom || "to be confirmed"} (not shown in the drawing)` : (CANOPY_COLORS[p.canopy] || CANOPY_COLORS.green).name + " canvas"}${p.logo ? ", with your logo imprint (artwork to be supplied)" : ""}` : "") + (p.offTypical ? ` (${usualNote(p)}: Master Systems to confirm)` : "")
       };
     });
     const fixed = fixedActive.map((id) => {
@@ -26631,7 +26837,11 @@
       return { name: ACCESSORIES[id].name, detail: n > 1 ? `Centered in each of ${n} courts` : "Centered on the court" };
     });
     const scoreCount = nets.filter((n) => n.score).length;
-    if (scoreCount) fixed.push({ name: "Digital scorekeeper", detail: `${scoreCount} mounted on a net post, just outside the court${scoreCount > 1 ? ", one per net" : ""}` });
+    if (scoreCount) fixed.push({ name: "Digital scorekeeper (TopScore)", detail: `${scoreCount} mounted on a net post, just outside the court${scoreCount > 1 ? ", one per net" : ""}. ${SCORE_COLORS[extras.scoreColor] || SCORE_COLORS.white}, outdoor-grade panels, aluminum shell` });
+    if (fixedActive.includes("pickleNet") && extras.pickleType === "portable") fixed.push({ name: "Pickleball net system", detail: "Portable temporary system" });
+    if (fixedActive.includes("tennisNet") && extras.banner) fixed.push({ name: "Custom tennis net banner", detail: `Printed to your design${extras.bannerText ? `: ${extras.bannerText}` : ""} (artwork to be supplied)` });
+    const prodList = OTHER_PRODUCTS.filter(([k]) => extras.products && extras.products[k]).map(([, n]) => n);
+    if (prodList.length) fixed.push({ name: "Other products requested", detail: prodList.join("; ") + ". Listed for the quote, not drawn" });
     const windscreen = screenName(fence);
     const liveGates = fence.on ? gates : [];
     const lengths = fenceLengths(dims, fence, liveGates, divider);
@@ -26826,17 +27036,61 @@ ${spec.site ? sec("Jobsite", siteRows(spec.site, row)) : ""}
       r.readAsDataURL(blob);
     });
   }
-  async function hostSave(result) {
-    try {
-      const hc = typeof window !== "undefined" && window.claude && window.claude.use ? await window.claude.use("downloads") : null;
-      if (!hc || !hc.save) return false;
-      const data = result.type === "png" ? await (await fetch(result.url)).blob() : new Blob([result.html], { type: "text/html" });
-      await hc.save({ filename: result.name, data });
-      return true;
-    } catch (e) {
-      return false;
+  var isTouchDevice = () => typeof navigator !== "undefined" && (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent || "") || navigator.maxTouchPoints > 1 && /Mac/i.test(navigator.platform || ""));
+  var blobFromDataUrl = (u) => {
+    const comma = u.indexOf(",");
+    const head = u.slice(0, comma);
+    const mime = (/^data:([^;,]+)/.exec(head) || [])[1] || "application/octet-stream";
+    const raw = /;base64/.test(head) ? atob(u.slice(comma + 1)) : decodeURIComponent(u.slice(comma + 1));
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
+  };
+  function deliverFile(name, blob) {
+    const hasHost = typeof window !== "undefined" && window.claude && window.claude.use;
+    if (hasHost) {
+      return window.claude.use("downloads").then((hc) => {
+        if (!hc || !hc.save) throw new Error("no host save");
+        return hc.save({ filename: name, data: blob }).then(() => "saved");
+      }).catch(() => plainSave(name, blob));
     }
+    return plainSave(name, blob);
   }
+  function plainSave(name, blob) {
+    try {
+      if (isTouchDevice() && typeof navigator !== "undefined" && navigator.canShare && navigator.share) {
+        const file = new File([blob], name, { type: blob.type });
+        if (navigator.canShare({ files: [file] })) {
+          return navigator.share({ files: [file], title: name }).then(() => "shared", (e) => {
+            if (e && e.name === "AbortError") return "cancelled";
+            return linkSave(name, blob);
+          });
+        }
+      }
+    } catch (e) {
+    }
+    return Promise.resolve(linkSave(name, blob));
+  }
+  function linkSave(name, blob) {
+    const url = URL.createObjectURL(blob);
+    if (isTouchDevice() && /html/.test(blob.type)) {
+      const w = window.open(url, "_blank");
+      if (w) {
+        setTimeout(() => URL.revokeObjectURL(url), 6e5);
+        return "opened";
+      }
+    }
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 6e4);
+    return "downloaded";
+  }
+  var resultBlob = (r) => r.type === "png" ? blobFromDataUrl(r.url) : new Blob([r.html], { type: "text/html" });
   var stripUi = (markup) => markup.replace(/<g data-ui="handle">[\s\S]*?<\/g>/g, "").replace(/<circle[^>]*data-handle[^>]*>[\s\S]*?<\/circle>/g, "");
   function svgToPng(rawMarkup) {
     return new Promise((resolve, reject) => {
@@ -26955,7 +27209,7 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
     const href = isPng ? result.url : result.url;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 rounded-lg border-2 border-[#236e45] bg-[#eaf4ee] p-3", "data-testid": "export-result", onClick: stop, onPointerDown: stop, onPointerUp: stop, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-sm font-semibold text-[#323c61]", children: isPng ? "Your image is ready" : "Your sheet is ready" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-600", children: isPng ? "Press Download, or right-click the picture (press and hold on a phone) and choose Save image. This box stays open until you close it." : "Press Download to save the sheet, then open it and use Print, then Save as PDF. This box stays open until you close it." }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-600", children: isPng ? "Press Download. On a phone, choose Save Image from the sheet that opens, or press and hold the picture. This box stays open until you close it." : "Press Download to save the sheet. On a phone it opens in its own tab: use Share, then Print, then Save as PDF. This box stays open until you close it." }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap gap-2", children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
           "a",
@@ -26966,16 +27220,7 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
             onClick: (e) => {
               e.stopPropagation();
               e.preventDefault();
-              hostSave(result).then((ok) => {
-                if (ok) return;
-                const a = document.createElement("a");
-                a.href = href;
-                a.download = result.name;
-                a.rel = "noopener";
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-              });
+              deliverFile(result.name, resultBlob(result));
             },
             children: [
               "Download ",
@@ -27037,14 +27282,7 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
     return e;
   };
   function saveFile(text, type, filename) {
-    const url = URL.createObjectURL(new Blob([text], { type }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1e3);
+    return deliverFile(filename, new Blob([text], { type }));
   }
   function ProposalModal({ open, onClose, spec, surfaceProps, dispatch = DISPATCH }) {
     const dlg = (0, import_react.useRef)(null);
@@ -27778,7 +28016,7 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
       zoneSets: JSON.parse(JSON.stringify(DEFAULT_ZONE_SETS)),
       divider: { ...DEFAULT_DIVIDER },
       fence: { ...like.fence },
-      fixedOn: { tennisNet: true, pickleNet: id === "pickleball", volleyNet: false, scorekeeper: false },
+      fixedOn: { ...{ tennisNet: true, pickleNet: false, volleyNet: id === "volleyball", scorekeeper: false, scoreColor: "white", pickleType: "permanent", banner: false, bannerText: "", canopyCustom: "", products: {} }, pickleNet: id === "pickleball" },
       placed: autoGoals(id, { x: 0, y: 0, l: o.l, w: o.w }, "auto", nextUid),
       gates: [],
       notes: "",
@@ -27791,7 +28029,7 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
     const layout = computeLayout({ dims: d.dims, divider: d.divider, sets: effSets, zoneSets: d.zoneSets, convert: d.convert, mainId: d.sportId });
     const courts = layout.courts;
     const fixedActive = Object.keys(ACCESSORIES).filter((id) => ACCESSORIES[id].kind === "fixed" && d.fixedOn[id] && !netStatus(id, courts));
-    const nets = fixedActive.flatMap((id) => netSegments(id, courts).map((n) => ({ id, ...n, score: !!d.fixedOn.scorekeeper })));
+    const nets = fixedActive.flatMap((id) => netSegments(id, courts).map((n) => ({ id, ...n, score: !!d.fixedOn.scorekeeper, scoreColor: d.fixedOn.scoreColor })));
     const flexPlaced = d.placed.map((p) => resolveFlex(p, d.dims, courts, playOf(sport, d.dims), d.fence.on)).filter((p) => p.ok);
     const gates = d.gates.map((g) => resolveGate(g, d.dims));
     const screenHex = screenHexOf(d.fence);
@@ -28042,7 +28280,8 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
       const spec = NET_3D[n.id] || NET_3D.tennisNet;
       const len = Math.hypot(n.x2 - n.x1, n.y2 - n.y1);
       if (len < 0.5) return;
-      B.panel(n.x1, n.y1, n.x2, n.y2, spec.top - spec.drop, spec.top, rgba("#1f2937", 0.55));
+      B.panel(n.x1, n.y1, n.x2, n.y2, spec.top - spec.drop, spec.top, rgba("#2b3340", 0.62));
+      B.bar(n.x1, n.y1, n.x2, n.y2, spec.top - spec.drop, 0.12, rgba("#e5e7eb"), { cast: false });
       B.bar(n.x1, n.y1, n.x2, n.y2, spec.top, 0.22, rgba("#e5e7eb"), { cast: false });
       [[n.x1, n.y1], [n.x2, n.y2]].forEach(([x, z]) => B.cyl(x, z, 0, spec.post, 0.17, 0.15, rgba("#3b4351"), { seg: 8 }));
       if (n.score) {
@@ -28053,10 +28292,11 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
         const ang = rad2deg(Math.atan2(az, ax));
         const y = spec.post + 0.3;
         B.bar(n.x1, n.y1, bx, bz, y + 0.4, 0.18, rgba("#4b5563"), { cast: false });
-        B.box(bx, bz, y, 2.4, 1, 1.4, ang, rgba("#1f2937"));
+        B.box(bx, bz, y, 2.4, 1, 1.4, ang, rgba("#1f4d36"));
         const px = -az;
         const pz = ax;
-        [0.52, -0.52].forEach((s) => B.box(bx + px * s, bz + pz * s, y + 0.2, 2, 0.02, 1, ang, rgba("#8fe0b0"), { group: "glow", cast: false }));
+        const face = n.scoreColor === "green" ? rgba("#2f7d56") : rgba("#eef2ee");
+        [0.52, -0.52].forEach((s) => B.box(bx + px * s, bz + pz * s, y + 0.2, 2, 0.02, 1, ang, face, { group: "glow", cast: false }));
       }
     });
     (flexPlaced || []).forEach((q) => {
@@ -28083,51 +28323,118 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
           B.box(h[0], h[1], 24.15, 2.3, 1.3, 0.06, ang, rgba("#fff3c4"), { group: "glow", cast: false });
         });
       } else if (q.type === "goal") {
+        const gs = q.R && q.R.scale || 1;
         const out = Math.max(0.5, q.out);
-        const e = at(out, 0);
-        const arm = at(out / 2, 0);
+        const dh = q.adj ? (q.rimH || 10) - 10 : 0;
+        const boardAt = out + GOAL_BOARD * gs;
+        const e = at(boardAt, 0);
+        const arm = at(boardAt / 2, 0);
         B.cyl(q.pos.x, q.pos.y, 0, 12, 0.4, 0.34, rgba("#4b5563"), { seg: 10 });
-        B.box(arm[0], arm[1], 11.05, out, 0.35, 0.35, ang, rgba("#4b5563"), { cast: false });
-        B.box(e[0], e[1], 8.9, 0.18, 6, 3.5, ang, rgba("#e3eaee"));
-        B.box(e[0], e[1], 9.6, 0.2, 2, 1.5, ang, rgba("#c0392b"), { cast: false, group: "glass" });
-        const rim = at(out + 0.95, 0);
-        B.ring(rim[0], rim[1], 10, 0.75, 0.12, rgba("#e8590c"));
-        B.cyl(rim[0], rim[1], 8.9, 10, 0.45, 0.75, rgba("#f3f4f6", 0.55), { seg: 10, group: "glass", cap: false, cast: false });
+        B.box(arm[0], arm[1], 11.05, boardAt, 0.35, 0.35, ang, rgba("#4b5563"), { cast: false });
+        B.box(e[0], e[1], 8.9 + dh, 0.18, 6 * gs, 3.5, ang, rgba("#e3eaee"));
+        B.box(e[0], e[1], 9.6 + dh, 0.2, 2, 1.5, ang, rgba("#c0392b"), { cast: false, group: "glass" });
+        if (q.adj) {
+          B.cyl(q.pos.x, q.pos.y, 0, 6.5, 0.55, 0.55, rgba("#1d4ed8"), { seg: 12 });
+          B.cyl(q.pos.x, q.pos.y, 6.5, 7.1, 0.6, 0.6, rgba("#f2b01e"), { seg: 12, cast: false });
+          const cr = at(-0.9, 0);
+          B.box(cr[0], cr[1], 4, 0.7, 0.3, 0.3, ang, rgba("#f2b01e"), { cast: false });
+          const rail = at(boardAt - 0.3, 0);
+          const top = Math.max(11.4, 8.9 + dh + 3.5);
+          B.box(rail[0], rail[1], 8.9 + dh, 0.25, 0.4, top - (8.9 + dh), ang, rgba("#1d4ed8"), { cast: false });
+        }
+        const rim = at(out + GOAL_RIM * gs, 0);
+        B.ring(rim[0], rim[1], 10 + dh, GOAL_RIM_R * gs, 0.12, rgba("#e8590c"));
+        B.cyl(rim[0], rim[1], 0, 10 + dh, 0.05, 0.05, rgba("#e8590c", 0.8), { seg: 6, cast: false, group: "glass" });
+        B.cyl(rim[0], rim[1], 8.9 + dh, 10 + dh, 0.45, GOAL_RIM_R * gs, rgba("#f3f4f6", 0.55), { seg: 10, group: "glass", cap: false, cast: false });
       } else if (q.type === "futsalGoal") {
         const half = def.half || 4.9;
-        const e = at(Math.max(0, q.out), 0);
+        const o0 = Math.max(0, q.out);
         const fr = rgba("#eef0f2");
-        [-half, half].forEach((s) => {
-          const a = at(Math.max(0, q.out), s);
-          B.cyl(a[0], a[1], 0, 6.56, 0.13, 0.13, fr, { seg: 8 });
-          const back = at(Math.max(0, q.out) - 3, s);
-          B.panel(a[0], a[1], back[0], back[1], 0.1, 6, rgba("#e5e7eb", 0.4));
-        });
-        const left = at(Math.max(0, q.out), -half);
-        const right = at(Math.max(0, q.out), half);
-        B.bar(left[0], left[1], right[0], right[1], 6.56, 0.26, fr, { cast: false });
-        const bl = at(Math.max(0, q.out) - 3, -half);
-        const br = at(Math.max(0, q.out) - 3, half);
-        B.panel(bl[0], bl[1], br[0], br[1], 0.1, 6, rgba("#e5e7eb", 0.4));
-        void e;
+        const net = rgba("#e5e7eb", 0.4);
+        if (q.integrated) {
+          const D = Math.max(1, o0);
+          const hf = 6.56;
+          const hb = Math.min(hf, 4.9);
+          const P = (a, b, y) => {
+            const c0 = at(o0 - a, b);
+            const w2 = B.W(c0[0], c0[1]);
+            return [w2[0], y, w2[1]];
+          };
+          const frame = (p1, p2) => {
+            const sx = p2[0] - p1[0], sy = p2[1] - p1[1], sz = p2[2] - p1[2];
+            const len = Math.hypot(sx, sy, sz) || 1;
+            const nx = -sz / len * 0.09, nz = sx / len * 0.09;
+            B.quad("solid", [p1, p2, [p2[0] + nx, p2[1], p2[2] + nz], [p1[0] + nx, p1[1], p1[2] + nz]], fr, false);
+            B.quad("solid", [p1, p2, [p2[0], p2[1] + 0.09, p2[2]], [p1[0], p1[1] + 0.09, p1[2]]], fr, false);
+          };
+          const FL = [P(0, -half, 0), P(0, -half, hf)], FR = [P(0, half, 0), P(0, half, hf)];
+          const BL = [P(D, -half, 0), P(D, -half, hb)], BR = [P(D, half, 0), P(D, half, hb)];
+          [FL, FR, BL, BR].forEach(([a0, a1]) => frame(a0, a1));
+          frame(FL[1], FR[1]);
+          frame(BL[1], BR[1]);
+          frame(FL[1], BL[1]);
+          frame(FR[1], BR[1]);
+          frame(FL[0], FR[0]);
+          frame(BL[0], BR[0]);
+          frame(FL[0], BL[0]);
+          frame(FR[0], BR[0]);
+          B.quad("glass", [FL[1], FR[1], BR[1], BL[1]], net, false);
+          B.quad("glass", [BL[0], BR[0], BR[1], BL[1]], net, false);
+          B.quad("glass", [FL[0], BL[0], BL[1], FL[1]], net, false);
+          B.quad("glass", [FR[0], BR[0], BR[1], FR[1]], net, false);
+        } else {
+          [-half, half].forEach((s2) => {
+            const a = at(o0, s2);
+            B.cyl(a[0], a[1], 0, 6.56, 0.13, 0.13, fr, { seg: 8 });
+            const back = at(o0 - 3, s2);
+            B.panel(a[0], a[1], back[0], back[1], 0.1, 6, net);
+          });
+          const left = at(o0, -half);
+          const right = at(o0, half);
+          B.bar(left[0], left[1], right[0], right[1], 6.56, 0.26, fr, { cast: false });
+          const bl = at(o0 - 3, -half);
+          const br = at(o0 - 3, half);
+          B.panel(bl[0], bl[1], br[0], br[1], 0.1, 6, net);
+        }
       } else if (q.type === "bench") {
-        const sh = def.shape;
-        const wood = rgba(sh.fill);
-        const slat = sh.depth * 0.9 / 4;
-        for (let k = 0; k < 4; k++) {
-          const c0 = at(-sh.depth * 0.45 + slat * (k + 0.5) + k * 0.02, 0);
-          B.box(c0[0], c0[1], 1.4, slat - 0.04, sh.len, 0.12, ang, wood);
+        const sh = shapeOf(q);
+        const sty = q.style || "back";
+        const wood = rgba(def.shape.fill);
+        const rows = sty === "doubleBack" || sty === "doubleFlat" ? 2 : 1;
+        const seatD = sty === "doubleBack" ? (sh.depth - 0.3) / 2 : sty === "doubleFlat" ? sh.depth / 2 : sh.depth * 0.9;
+        const nBoards = sty === "single" ? 3 : 4;
+        for (let r = 0; r < rows; r++) {
+          const side = rows === 2 ? r === 0 ? 1 : -1 : 1;
+          const base = rows === 2 ? side * (sty === "doubleBack" ? seatD / 2 + 0.15 : seatD / 2) : 0;
+          const slat = seatD * 0.95 / nBoards;
+          for (let k = 0; k < nBoards; k++) {
+            const c0 = at(base + side * (-seatD / 2 + slat * (k + 0.5)) * (rows === 2 ? 1 : 1), 0);
+            B.box(c0[0], c0[1], 1.4, slat - 0.04, sh.len, 0.12, ang, wood);
+          }
         }
         [-1, 1].forEach((s2) => {
-          [0.3, -0.3].forEach((fa) => {
-            const l = at(fa * sh.depth, s2 * (sh.len / 2 - 0.4));
+          const legs = rows === 2 ? [-sh.depth * 0.38, sh.depth * 0.38] : [0.3 * sh.depth, -0.3 * sh.depth];
+          legs.forEach((fa) => {
+            const l = at(fa, s2 * (sh.len / 2 - 0.4));
             B.box(l[0], l[1], 0, 0.14, 0.14, 1.4, ang, dark);
           });
-          const arm = at(0, s2 * (sh.len / 2 - 0.1));
-          B.box(arm[0], arm[1], 2.2, sh.depth * 0.85, 0.12, 0.12, ang, dark);
+          if (sty === "back" || sty === "single") {
+            const arm = at(0, s2 * (sh.len / 2 - 0.1));
+            B.box(arm[0], arm[1], 2.2, sh.depth * 0.85, 0.12, 0.12, ang, dark);
+          }
         });
-        const back = at(-sh.depth / 2 + 0.1, 0);
-        [0, 1, 2].forEach((k) => B.box(back[0], back[1], 1.7 + k * 0.38, 0.1, sh.len, 0.28, ang, wood, { rot: 0 }));
+        if (sty === "back") {
+          const back = at(-sh.depth / 2 + 0.1, 0);
+          [0, 1, 2].forEach((k) => B.box(back[0], back[1], 1.7 + k * 0.38, 0.1, sh.len, 0.28, ang, wood));
+        }
+        if (sty === "doubleBack") {
+          const mid2 = at(0, 0);
+          [0, 1, 2].forEach((k) => B.box(mid2[0], mid2[1], 1.7 + k * 0.38, 0.1, sh.len, 0.28, ang, wood));
+          [-1, 1].forEach((s2) => {
+            const l = at(0, s2 * (sh.len / 2 - 0.4));
+            B.box(l[0], l[1], 1.4, 0.14, 0.14, 1.4, ang, dark);
+          });
+        }
         if (q.shade) {
           const hd = SHADE.depth / 2;
           const hl = SHADE.len / 2;
@@ -28136,15 +28443,18 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
             const c0 = at(a * (hd - 0.4), b * (hl - 0.6));
             B.cyl(c0[0], c0[1], 0, 8.2, 0.2, 0.2, postC, { seg: 8 });
           });
-          const green = rgba("#1f6b45");
-          const green2 = rgba("#185a39");
+          const hex = (CANOPY_COLORS[q.canopy] || CANOPY_COLORS.green).hex;
+          const green = rgba(hex);
+          const dk = (c2) => [c2[0] * 0.82, c2[1] * 0.82, c2[2] * 0.82, c2[3]];
+          const green2 = dk(green);
           const ov = 0.8;
           const ea = hd + ov;
           const eb = hl + ov;
           const rb = Math.max(0.5, hl - hd * 0.7);
           const P = (a, b, y) => {
             const c0 = at(a, b);
-            return [c0[0], y, c0[1]];
+            const w = B.W(c0[0], c0[1]);
+            return [w[0], y, w[1]];
           };
           const mid2 = P(0, 0, 7);
           const E1 = P(-ea, -eb, 8.2), E2 = P(-ea, eb, 8.2), E3 = P(ea, eb, 8.2), E4 = P(ea, -eb, 8.2);
@@ -28161,9 +28471,85 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
           tri(E2, E3, R2);
           const lo = (v) => [v[0], 7.7, v[2]];
           [[E1, E2], [E2, E3], [E3, E4], [E4, E1]].forEach(([a, b]) => B.quad("solid", [a, b, lo(b), lo(a)], green2, false, mid2));
+          if (q.logo) {
+            const yAt = (a) => 9.7 - a / ea * 1.5 + 0.04;
+            const a0 = ea * 0.35, a1 = ea * 0.7, bw = hl * 0.45;
+            B.quad("solid", [P(a0, -bw, yAt(a0)), P(a0, bw, yAt(a0)), P(a1, bw, yAt(a1)), P(a1, -bw, yAt(a1))], rgba("#e9efe9"), false, mid2);
+          }
         }
+      } else if (q.type === "umpireChair") {
+        const chair = rgba("#2d3340");
+        [[-1, -1], [-1, 1], [1, -1], [1, 1]].forEach(([a, b]) => {
+          const c0 = at(a * 0.95, b * 0.95);
+          B.cyl(c0[0], c0[1], 0, 5.5, 0.11, 0.09, chair, { seg: 6 });
+        });
+        const st = at(0, 0);
+        B.box(st[0], st[1], 5.5, 2.3, 2.3, 0.2, ang, rgba("#1f6b45"));
+        const bk = at(-1, 0);
+        B.box(bk[0], bk[1], 5.7, 0.15, 2, 2.2, ang, rgba("#1f6b45"));
+        [-1, 1].forEach((b) => {
+          const c0 = at(0.2, b * 1.1);
+          B.box(c0[0], c0[1], 6.4, 1.6, 0.12, 0.12, ang, chair);
+        });
+        const fr = at(1.2, 0);
+        B.box(fr[0], fr[1], 3.3, 0.5, 1.8, 0.1, ang, chair);
+        [1.2, 2.4, 3.6, 4.8].forEach((hh) => {
+          const c0 = at(1.55, 0);
+          B.box(c0[0], c0[1], hh - 0.1, 0.6, 1.4, 0.1, ang, chair);
+        });
+      } else if (q.type === "bleachers") {
+        const sh = shapeOf(q);
+        const alu = rgba("#b8c0c8");
+        const rowsN = 3;
+        const rd = sh.depth / rowsN;
+        for (let k = 0; k < rowsN; k++) {
+          const c0 = at(sh.depth / 2 - (k + 0.5) * rd, 0);
+          const y = 1.5 + k * 1.5;
+          B.box(c0[0], c0[1], y, rd * 0.7, sh.len, 0.15, ang, alu);
+          const ft = at(sh.depth / 2 - (k + 0.5) * rd + rd * 0.35, 0);
+          B.box(ft[0], ft[1], y - 0.75, rd * 0.5, sh.len, 0.1, ang, alu);
+          const rs = at(sh.depth / 2 - (k + 0.5) * rd - rd * 0.3, 0);
+          B.box(rs[0], rs[1], y - 0.75, 0.08, sh.len, 0.75, ang, alu);
+        }
+        [0, 0.5, 1].forEach((f) => {
+          const bz = at(0, (f - 0.5) * (sh.len - 0.3));
+          B.box(bz[0], bz[1], 0, sh.depth * 0.8, 0.12, 0.12, ang, rgba("#7b847f"));
+          [0, 1, 2].forEach((k) => {
+            const c0 = at(sh.depth / 2 - (k + 0.5) * rd, (f - 0.5) * (sh.len - 0.3));
+            B.box(c0[0], c0[1], 0, 0.12, 0.12, 1.5 + k * 1.5, ang, rgba("#7b847f"));
+          });
+        });
+        const rail = at(-sh.depth / 2 + 0.1, 0);
+        B.box(rail[0], rail[1], 3.5, 0.08, sh.len, 0.08, ang, rgba("#7b847f"), { cast: false });
+        [0, 1].forEach((f) => {
+          const c0 = at(-sh.depth / 2 + 0.1, (f - 0.5) * (sh.len - 0.2));
+          B.box(c0[0], c0[1], 4.5, 0.1, 0.1, 3, ang, rgba("#7b847f"), { cast: false });
+        });
+      } else if (q.type === "ballMachine") {
+        const body = at(0, 0);
+        B.box(body[0], body[1], 0.4, 1.3, 1, 1.3, ang, rgba("#e8590c"));
+        B.cyl(body[0], body[1], 1.7, 2.9, 0.55, 0.8, rgba("#c9d2d8", 0.6), { seg: 10, group: "glass", cap: false, cast: false });
+        B.cyl(body[0], body[1], 1.7, 2, 0.55, 0.55, rgba("#e8590c"), { seg: 10 });
+        [-1, 1].forEach((b) => {
+          const w = at(0, b * 0.62);
+          B.box(w[0], w[1], 0, 0.7, 0.14, 0.7, ang, rgba("#1f2430"));
+        });
+        const fr = at(0.8, 0);
+        B.box(fr[0], fr[1], 1.1, 0.5, 0.3, 0.3, ang, rgba("#1f2430"));
+      } else if (q.type === "courtTable") {
+        const sh = shapeOf(q);
+        const top = at(0, 0);
+        B.box(top[0], top[1], 2.55, sh.depth * 0.9, sh.len * 0.9, 0.12, ang, rgba(sh.fill));
+        [[-1, -1], [-1, 1], [1, -1], [1, 1]].forEach(([a, b]) => {
+          const l = at(a * sh.depth * 0.38, b * sh.len * 0.38);
+          B.cyl(l[0], l[1], 0, 2.55, 0.07, 0.07, dark, { seg: 6 });
+        });
+        [-0.8, 0, 0.8].forEach((b) => {
+          const c0 = at(0, b);
+          B.cyl(c0[0], c0[1], 2.67, 3.05, 0.17, 0.2, rgba(b === 0 ? "#e8590c" : "#2a6fa8"), { seg: 8 });
+        });
       } else if (q.type === "practiceWall") {
-        const sh = def.shape;
+        const sh = shapeOf(q);
         const face = rgba("#0f4a30");
         const frame = rgba("#e8ece9");
         const y1 = 1.3;
@@ -28270,7 +28656,8 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
   function createRenderer3D(canvas, opts = {}) {
     let gl = null;
     try {
-      gl = canvas.getContext("webgl", { antialias: true, stencil: true, alpha: false, preserveDrawingBuffer: !!opts.keep }) || canvas.getContext("experimental-webgl");
+      const ctxOpts = { antialias: true, stencil: true, alpha: false, preserveDrawingBuffer: !!opts.keep };
+      gl = canvas.getContext("webgl", ctxOpts) || canvas.getContext("experimental-webgl", ctxOpts) || canvas.getContext("webgl2", ctxOpts) || canvas.getContext("webgl", { ...ctxOpts, antialias: false, stencil: true });
     } catch (e) {
       gl = null;
     }
@@ -28494,24 +28881,42 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
   var MOVIE_SECONDS = 15;
   var TURN_RATE = Math.PI * 2 / 40;
   var MOVIE_VIEWS = [["Low", 0.3], ["Medium", 0.5], ["High", 0.85]];
-  function markupToCanvas(markup, w, h) {
-    return new Promise((resolve, reject) => {
-      const text = markup.replace(/<svg /, `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" preserveAspectRatio="none" `).replace(/ class="[^"]*"/, "");
-      const url = URL.createObjectURL(new Blob([text], { type: "image/svg+xml;charset=utf-8" }));
+  function markupToCanvas(markup, w, h, flat = "#0f3461") {
+    const text = markup.replace(/<svg /, `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" preserveAspectRatio="none" `).replace(/ class="[^"]*"/, "");
+    const attempt = (url, revoke) => new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
-        const c = document.createElement("canvas");
-        c.width = w;
-        c.height = h;
-        c.getContext("2d").drawImage(img, 0, 0, w, h);
-        URL.revokeObjectURL(url);
-        resolve(c);
+        try {
+          const c = document.createElement("canvas");
+          c.width = w;
+          c.height = h;
+          const g = c.getContext("2d");
+          g.drawImage(img, 0, 0, w, h);
+          g.getImageData(0, 0, 1, 1);
+          if (revoke) URL.revokeObjectURL(url);
+          resolve(c);
+        } catch (e) {
+          if (revoke) URL.revokeObjectURL(url);
+          reject(e);
+        }
       };
       img.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error("Could not draw the court surface."));
+        if (revoke) URL.revokeObjectURL(url);
+        reject(new Error("image"));
       };
       img.src = url;
+    });
+    const dataUrl = () => "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(text)));
+    const blobUrl = () => URL.createObjectURL(new Blob([text], { type: "image/svg+xml;charset=utf-8" }));
+    return attempt(dataUrl(), false).catch(() => attempt(blobUrl(), true)).catch(() => {
+      const c = document.createElement("canvas");
+      c.width = w;
+      c.height = h;
+      const g = c.getContext("2d");
+      g.fillStyle = flat;
+      g.fillRect(0, 0, w, h);
+      c.flat = true;
+      return c;
     });
   }
   var groundProps = (p) => ({
@@ -28597,25 +29002,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
       requestAnimationFrame(tick);
     });
   }
-  async function saveBlob(name, blob) {
-    try {
-      const hc = typeof window !== "undefined" && window.claude && window.claude.use ? await window.claude.use("downloads") : null;
-      if (hc && hc.save) {
-        await hc.save({ filename: name, data: blob });
-        return "saved";
-      }
-    } catch (e) {
-    }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 6e4);
-    return "downloaded";
-  }
+  var saveBlob = (name, blob) => deliverFile(name, blob);
   function Court3DView({ place, photoSrc = "", photoFt = 300, title = "", fileBase = "court" }) {
     const canvasRef = (0, import_react.useRef)(null);
     const hostRef = (0, import_react.useRef)(null);
@@ -28655,7 +29042,12 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
     const list = place(aspect);
     const sig = JSON.stringify(list) + (photo ? `|${photoFt}|${aspect}` : "");
     (0, import_react.useEffect)(() => {
-      const r = createRenderer3D(canvasRef.current);
+      let r = null;
+      try {
+        r = createRenderer3D(canvasRef.current);
+      } catch (e) {
+        r = null;
+      }
       rendRef.current = r;
       if (!r) {
         setOk(false);
@@ -28680,7 +29072,10 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
             if (!el) return null;
             const w = pow2(it.props.dims.l * 24, 2048);
             const h = pow2(it.props.dims.w * 24, 2048);
-            return markupToCanvas(el.outerHTML, w, h).catch(() => null);
+            return markupToCanvas(el.outerHTML, w, h, it.props.main).then((c) => {
+              if (c.flat) setErr("The painted court surface could not be drawn here, so a flat color is shown. Open the app in its own browser tab for the full picture.");
+              return c;
+            });
           }));
           if (dead) return;
           const groundImg = photo ? { canvas: photo.canvas, W: photoFt, H: photoFt / photo.aspect } : null;
@@ -28731,7 +29126,12 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
         }
         if (c.dirty && rendRef.current) {
           c.dirty = false;
-          rendRef.current.draw(c);
+          try {
+            rendRef.current.draw(c);
+          } catch (e) {
+            rendRef.current = null;
+            setOk(false);
+          }
         }
       };
       raf = requestAnimationFrame(tick);
@@ -28843,6 +29243,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
             onPointerCancel: up
           }
         ),
+        err && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { role: "alert", className: "mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900", children: err }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-2 text-xs text-slate-500", children: "Drag to turn it, scroll or pinch to zoom. Shadows and heights are drawn for the sun in the afternoon." }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap items-center gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": auto, onClick: () => setAuto((a) => !a), className: chip(auto), children: "Turn slowly" }),
@@ -29233,8 +29634,8 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
     const [tool, setTool] = (0, import_react.useState)(null);
     const [notes, setNotes] = (0, import_react.useState)("");
     const [meas, setMeas] = (0, import_react.useState)(DEFAULT_MEAS);
-    const [fence, setFence] = (0, import_react.useState)({ on: false, height: 6, screen: "black", customScreen: "" });
-    const [fixedOn, setFixedOn] = (0, import_react.useState)({ tennisNet: true, pickleNet: false, volleyNet: false, scorekeeper: false });
+    const [fence, setFence] = (0, import_react.useState)({ on: false, height: 6, screen: "black", customScreen: "", logo: false, logoText: "" });
+    const [fixedOn, setFixedOn] = (0, import_react.useState)({ tennisNet: true, pickleNet: false, volleyNet: false, scorekeeper: false, scoreColor: "white", pickleType: "permanent", banner: false, bannerText: "", canopyCustom: "", products: {} });
     const [convert, setConvert] = (0, import_react.useState)(false);
     const [courtsList, setCourtsList] = (0, import_react.useState)([{ id: 1, name: "Court 1", design: null }]);
     const [activeCourt, setActiveCourt] = (0, import_react.useState)(1);
@@ -29501,7 +29902,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
     const fixedActive = Object.keys(ACCESSORIES).filter(
       (id) => ACCESSORIES[id].kind === "fixed" && fixedOn[id] && !netStatus(id, courts)
     );
-    const nets = fixedActive.flatMap((id) => netSegments(id, courts).map((n) => ({ id, ...n, score: !!fixedOn.scorekeeper })));
+    const nets = fixedActive.flatMap((id) => netSegments(id, courts).map((n) => ({ id, ...n, score: !!fixedOn.scorekeeper, scoreColor: fixedOn.scoreColor })));
     const placements = placed.map((p) => resolveFlex(p, dims, courts, playOf(sport, dims), fence.on));
     const flexPlaced = placements.filter((p) => p.ok);
     const resolvedGates = gates.map((g) => resolveGate(g, dims));
@@ -29640,13 +30041,32 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
       const mine = /* @__PURE__ */ new Set([key, `${key}-twin`]);
       setPlaced((list) => [...list.filter((p) => !(p.auto && p.type === type && (mine.has(p.court) || !p.court && !courtKey))), ...fresh]);
     };
+    const goalsGiven = (0, import_react.useRef)(/* @__PURE__ */ new Set());
+    (0, import_react.useEffect)(() => {
+      const live = /* @__PURE__ */ new Set();
+      const adds = [];
+      layout.courts.forEach((c) => {
+        if (c.twin || c.converted || !BBALL_SPORTS.includes(c.sport)) return;
+        live.add(c.key);
+        if (goalsGiven.current.has(c.key)) return;
+        goalsGiven.current.add(c.key);
+        const type = goalTypeFor(c.sport);
+        if (!type || !c.fits) return;
+        const has = placed.some((p) => p.type === type && (p.court === c.key || !p.court && c.key === `all-${c.sport}`));
+        if (!has) adds.push(c);
+      });
+      [...goalsGiven.current].forEach((k) => {
+        if (!live.has(k)) goalsGiven.current.delete(k);
+      });
+      adds.forEach((c) => addBaselineGoals(c.sport, c.key));
+    });
     const pickSport = (id) => {
       setSportId(id);
       if (SPORTS[id].blank) setLock(false);
       setDims(SPORTS[id].overall);
       setConvert(false);
       setSets((s) => ({ ...s, [sportId]: { ...s[sportId], on: false }, [id]: { ...s[id], on: true } }));
-      setFixedOn((f) => ({ ...f, pickleNet: id === "pickleball" }));
+      setFixedOn((f) => ({ ...f, pickleNet: id === "pickleball", volleyNet: id === "volleyball" ? true : f.volleyNet }));
       const o = SPORTS[id].overall;
       setPlaced(rebuildAuto([{ id, zone: { x: 0, y: 0, l: o.l, w: o.w }, turn: "auto" }], placed));
     };
@@ -29796,7 +30216,8 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
       notes,
       site,
       meas,
-      measures
+      measures,
+      extras: fixedOn
     });
     const courtRows = courtsList.map((c) => ({ id: c.id, name: c.name, rot: c.rot || 0, d: c.id === activeCourt ? designOf(design) : c.design }));
     const surfaceProps = {
