@@ -25489,7 +25489,6 @@
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: x, cy: y, r: isGoal ? 1 : 1.1, fill: isGoal ? "#c0392b" : "#f2d450", stroke: "#f1f5f9", strokeWidth: "0.25" }),
               p.offTypical && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: x, cy: y, r: "1.8", fill: "none", stroke: "#b45309", strokeWidth: "0.3", strokeDasharray: "0.6 0.4" }),
-              isGoal && p.out >= 1.5 && !mOn && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { x: x + d.x * p.out * 0.5 - d.y * 2.2, y: y + d.y * p.out * 0.5 + d.x * 2.2, text: f(p.out), size: 1.7 * k }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Handle, { kind: "flex", id: p.uid, x, y, label: `${ACCESSORIES[p.type].name}: drag to move` })
             ] }, p.uid);
           }),
