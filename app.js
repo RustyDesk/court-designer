@@ -24033,9 +24033,19 @@
     const fixed = opt && typeof opt.scale === "number" ? clamp(opt.scale, MIN_SCALE, 1) : null;
     const exactL = opt && typeof opt.cl === "number" ? clamp(opt.cl / s.l, MIN_SCALE, 2) : null;
     const exactW = opt && typeof opt.cw === "number" ? clamp(opt.cw / s.w, MIN_SCALE, 2) : null;
+    const fill = !!(opt && opt.fill);
     const exact = exactL !== null || exactW !== null;
     const scaling = fixed === null && !exact && shrink && !!sp.scalable;
     const fitAt = (t2) => {
+      if (fill) {
+        const along = t2 === 0 ? rect.l : rect.w;
+        const across = t2 === 0 ? rect.w : rect.l;
+        const kl = clamp(along / s.l, MIN_SCALE, 2);
+        const kw = clamp(Math.min(s.w, across) / s.w, MIN_SCALE, 1);
+        const ex2 = t2 === 0 ? s.l * kl : s.w * kw;
+        const ey2 = t2 === 0 ? s.w * kw : s.l * kl;
+        return { kl, kw, k: Math.min(kl, kw), ok: ex2 <= rect.l + 1e-6 && ey2 <= rect.w + 1e-6 && along / s.l >= MIN_SCALE && across / s.w >= MIN_SCALE };
+      }
       const kl0 = exact ? exactL ?? fixed ?? 1 : fixed ?? 1;
       const kw0 = exact ? exactW ?? fixed ?? 1 : fixed ?? 1;
       const ex = t2 === 0 ? s.l * kl0 : s.w * kw0;
@@ -24069,7 +24079,7 @@
     const ks = String(turn) === "90" ? [k(90)] : String(turn) === "0" ? [k(0)] : [k(0), k(90)];
     return Math.floor(Math.max(...ks) * 100) / 100;
   };
-  var setOpts = (set) => set ? { scale: set.scale, cl: set.cl, cw: set.cw, ax: set.ax, ay: set.ay, inset: set.inset, flip: !!set.flip, twin: !!set.twin, noMid: !!set.noMid, noSides: !!set.noSides, turn: set.turn, px: set.px, py: set.py } : null;
+  var setOpts = (set) => set ? { scale: set.scale, cl: set.cl, cw: set.cw, ax: set.ax, ay: set.ay, inset: set.inset, fill: set.fill === true, flip: !!set.flip, twin: !!set.twin, noMid: !!set.noMid, noSides: !!set.noSides, turn: set.turn, px: set.px, py: set.py } : null;
   var twinOpts = (o, turn) => ({
     ...o,
     flip: !o.flip,
@@ -24868,6 +24878,7 @@
       if (["left", "right"].includes(s.ax)) c.ax = s.ax;
       if (["top", "bottom"].includes(s.ay)) c.ay = s.ay;
       if (typeof s.inset === "number" && s.inset > 0) c.inset = numIn(s.inset, 0, 200, 0);
+      if (s.fill === true) c.fill = true;
       return c;
     };
     const cleanSets = (src, base) => {
@@ -24899,6 +24910,7 @@
         if (s && ["left", "right"].includes(s.ax)) o[id].ax = s.ax;
         if (s && ["top", "bottom"].includes(s.ay)) o[id].ay = s.ay;
         if (s && typeof s.inset === "number" && s.inset > 0) o[id].inset = numIn(s.inset, 0, 200, 0);
+        if (s && s.fill === true) o[id].fill = true;
       });
       return o;
     };
@@ -25888,7 +25900,7 @@
             "aria-label": `${label}: ${SPORTS[id].name} lines size`,
             onChange: (e) => {
               const v = parseInt(e.target.value, 10) / 100;
-              patch({ scale: v >= 0.999 ? null : v, cl: void 0, cw: void 0 });
+              patch({ scale: v >= 0.999 ? null : v, cl: void 0, cw: void 0, fill: void 0 });
             },
             className: "w-36 accent-[#236e45]"
           }
@@ -25897,21 +25909,21 @@
           pct,
           "%"
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", disabled: best >= 0.999 && set.scale == null, onClick: () => patch({ scale: best >= 0.999 ? null : best, cl: void 0, cw: void 0 }), className: chip(false), children: best >= 0.999 ? "Regulation size" : "Fit to surface" })
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", disabled: best >= 0.999 && set.scale == null, onClick: () => patch({ scale: best >= 0.999 ? null : best, cl: void 0, cw: void 0, fill: void 0 }), className: chip(false), children: best >= 0.999 ? "Regulation size" : "Fit to surface" })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap items-center gap-2", role: "group", "aria-label": `${label}: ${SPORTS[id].name} lines exact size`, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "w-20", children: "Exact size" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumField, { label: `${label}: ${SPORTS[id].name} lines length`, value: r1(pc.turn === 0 ? pc.l : pc.w), min: 1, max: 400, step: 0.5, onCommit: (v) => patch({ scale: void 0, cl: v, cw: set.cw ?? SPORTS[id].play.w * (pc.sw || 1) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumField, { label: `${label}: ${SPORTS[id].name} lines length`, value: r1(pc.turn === 0 ? pc.l : pc.w), min: 1, max: 400, step: 0.5, onCommit: (v) => patch({ fill: void 0, scale: void 0, cl: v, cw: set.cw ?? SPORTS[id].play.w * (pc.sw || 1) }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "long x" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumField, { label: `${label}: ${SPORTS[id].name} lines width`, value: r1(pc.turn === 0 ? pc.w : pc.l), min: 1, max: 400, step: 0.5, onCommit: (v) => patch({ scale: void 0, cw: v, cl: set.cl ?? SPORTS[id].play.l * (pc.sl || 1) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumField, { label: `${label}: ${SPORTS[id].name} lines width`, value: r1(pc.turn === 0 ? pc.w : pc.l), min: 1, max: 400, step: 0.5, onCommit: (v) => patch({ fill: void 0, scale: void 0, cw: v, cl: set.cl ?? SPORTS[id].play.l * (pc.sl || 1) }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "wide ft" })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-slate-500", children: "Typing a length and width stretches the markings to match. The slider and Fit button keep regulation proportions." }),
       id === "basketball" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap items-center gap-2", role: "group", "aria-label": `${label}: baselines at the surface edge`, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "w-20", children: "Baselines" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => patch({ scale: void 0, cl: pc.turn === 0 ? rect.l : rect.w, cw: Math.min(SPORTS[id].play.w, pc.turn === 0 ? rect.w : rect.l), ax: void 0, ay: void 0, px: void 0, py: void 0, inset: void 0 }), className: chip(false), "aria-label": `${label}: stretch the lines so the baselines sit on the surface edges`, children: "Stretch lines to the surface edges" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => patch({ fill: true, scale: void 0, cl: void 0, cw: void 0, ax: void 0, ay: void 0, px: void 0, py: void 0, inset: void 0 }), className: chip(false), "aria-label": `${label}: stretch the lines so the baselines sit on the surface edges`, children: "Stretch lines to the surface edges" }),
         onTrim && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", onClick: () => {
-          patch({ scale: void 0, cl: void 0, cw: void 0, ax: void 0, ay: void 0, px: void 0, py: void 0, inset: void 0 });
+          patch({ fill: void 0, scale: void 0, cl: void 0, cw: void 0, ax: void 0, ay: void 0, px: void 0, py: void 0, inset: void 0 });
           onTrim(pc.turn);
         }, className: chip(false), "aria-label": `${label}: trim the surface so the baselines sit on its edges`, children: "Trim the surface to the court" })
       ] }),
@@ -26055,7 +26067,7 @@
                   checked: on,
                   disabled: !fits,
                   "aria-label": `Whole surface: ${sp.name} lines`,
-                  onChange: (e) => patchWhole(id, e.target.checked ? { on: true, copies: void 0, cl: void 0, cw: void 0, turn: void 0, px: void 0, py: void 0, ay: void 0, flip: void 0, ax: id === "basketballHalf" ? "left" : void 0, scale: placeCourt(whole, id, 0, false).fits ? void 0 : fitScale(whole, id, 0) } : { on: false }),
+                  onChange: (e) => patchWhole(id, e.target.checked ? { on: true, copies: void 0, cl: void 0, cw: void 0, turn: id === "basketball" && placeCourt(whole, id, 90, false, { fill: true }).scale > placeCourt(whole, id, 0, false, { fill: true }).scale + 1e-6 ? 90 : void 0, px: void 0, py: void 0, ay: void 0, flip: void 0, ax: id === "basketballHalf" ? "left" : void 0, scale: placeCourt(whole, id, 0, false).fits || id === "basketball" ? void 0 : fitScale(whole, id, 0), fill: id === "basketball" && !placeCourt(whole, id, "auto", false).fits ? true : void 0 } : { on: false }),
                   className: "h-4 w-4 accent-[#236e45]"
                 }
               ),
