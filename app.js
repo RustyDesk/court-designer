@@ -27127,7 +27127,32 @@ ${spec.site ? sec("Jobsite", siteRows(spec.site, row)) : ""}
   }
   var resultBlob = (r) => r.type === "png" ? blobFromDataUrl(r.url) : new Blob([r.html], { type: "text/html" });
   var stripUi = (markup) => markup.replace(/<g data-ui="handle">[\s\S]*?<\/g>/g, "").replace(/<circle[^>]*data-handle[^>]*>[\s\S]*?<\/circle>/g, "");
-  function svgToPng(rawMarkup) {
+  var decorateCustomerMarkup = (markup, { name = "", dims, mark = false, title = false }) => {
+    const nm = String(name || "").trim();
+    if (!nm || !mark && !title) return markup;
+    const m = /viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"/.exec(markup);
+    if (!m) return markup;
+    const [vx, vy, vw, vh] = [1, 2, 3, 4].map((i) => parseFloat(m[i]));
+    const txt = nm.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").slice(0, 80);
+    const font = 'font-family="Inter, Helvetica, Arial, sans-serif" font-weight="700"';
+    let out = markup;
+    let body = "";
+    if (mark) {
+      const fs = Math.max(2, Math.min(dims.w * 0.3, dims.l * 0.88 / (txt.length * 0.6)));
+      body += `<text x="${dims.l / 2}" y="${dims.w / 2}" text-anchor="middle" dominant-baseline="central" ${font} font-size="${fs}" fill="#8fe0b0" fill-opacity="0.5" stroke="#323c61" stroke-opacity="0.45" stroke-width="${fs * 0.018}" data-name-mark="1">${txt}</text>`;
+    }
+    let box = [vx, vy, vw, vh];
+    if (title) {
+      const fs = Math.max(2.4, Math.min(7, vw * 0.04));
+      const band = fs * 2;
+      box = [vx, vy - band, vw, vh + band];
+      body += `<text x="${vx + vw / 2}" y="${vy - band * 0.3}" text-anchor="middle" ${font} font-size="${fs}" fill="#323c61" data-name-title="1">${txt}</text>`;
+    }
+    out = out.replace(/viewBox="[^"]*"/, `viewBox="${box.join(" ")}"`);
+    const at = out.lastIndexOf("</svg>");
+    return at < 0 ? out : out.slice(0, at) + body + out.slice(at);
+  };
+  function svgToPng(rawMarkup, mime = "image/png") {
     return new Promise((resolve, reject) => {
       const markup = stripUi(rawMarkup);
       const m = /viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"/.exec(markup);
@@ -27149,7 +27174,7 @@ ${spec.site ? sec("Jobsite", siteRows(spec.site, row)) : ""}
         ctx.fillRect(0, 0, W, H);
         ctx.drawImage(img, 0, 0, W, H);
         URL.revokeObjectURL(url);
-        c.toBlob((b) => b ? resolve(b) : reject(new Error("Could not make the image.")), "image/png");
+        c.toBlob((b) => b ? resolve(b) : reject(new Error("Could not make the image.")), mime, 0.92);
       };
       img.onerror = () => {
         URL.revokeObjectURL(url);
@@ -27272,16 +27297,31 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
     ] });
   }
   function ExportPanel({ onExport, busy, result = null, onClose = () => {
-  } }) {
+  }, opts = null, setOpts: setOpts2 = null, hasName = false }) {
     const items = [
       ["customer", "html", "Customer sheet"],
       ["crew", "html", "Crew sheet"],
       ["customer", "png", "Customer image (PNG)"],
-      ["crew", "png", "Crew image (PNG)"]
+      ["crew", "png", "Crew image (PNG)"],
+      ["customer", "jpg", "Customer image (JPG)"],
+      ["crew", "jpg", "Crew image (JPG)"]
     ];
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { "aria-label": "Export", className: "mb-8", children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("h2", { className: "mb-3 text-lg font-semibold text-[#323c61]", children: "Export drawings" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mb-2 text-xs text-slate-500", children: "The customer version shows the design without dimensions. The crew version shows every measurement, gate detail and the quantities. Sheets open in your browser; use Print and print at 100% to get the stated scale, or save as a PDF." }),
+      opts && setOpts2 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mb-3 rounded border border-slate-200 bg-white p-3", "data-testid": "customer-image-options", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "px-1 text-sm font-semibold text-[#323c61]", children: "Customer image options" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-col gap-1 text-sm", children: [
+          ["overall", "Show the overall pad dimensions (length and width)"],
+          ["title", "Project name above the dimensions"],
+          ["mark", "Project name across the whole court, see-through"]
+        ].map(([k, text]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!opts[k], "aria-label": `Customer image: ${text}`, onChange: (e) => setOpts2({ ...opts, [k]: e.target.checked }), className: "h-4 w-4 accent-[#236e45]" }),
+          text
+        ] }, k)) }),
+        (opts.title || opts.mark) && !hasName && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-amber-800", children: "Add a project name first. The name options need one." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: "These apply to the customer images (PNG and JPG)." })
+      ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-wrap gap-2", children: items.map(([kind, fmt, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", disabled: busy, onClick: () => onExport(kind, fmt), className: btn2, children: label }, label)) }),
       busy && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { role: "status", className: "mt-2 text-xs text-slate-600", children: "Making the image..." }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ExportResultBox, { result, onClose })
@@ -29699,6 +29739,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
     const hist = (0, import_react.useRef)({ past: [], future: [], last: null, base: null, timer: null, restoring: false, initial: null });
     const [, bump] = (0, import_react.useState)(0);
     const customerBox = (0, import_react.useRef)(null);
+    const [custOpts, setCustOpts] = (0, import_react.useState)({ overall: false, title: false, mark: false });
     const crewBox = (0, import_react.useRef)(null);
     const commitBurst = () => {
       const h = hist.current;
@@ -30210,7 +30251,8 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
       const box = (kind === "crew" ? crewBox : customerBox).current;
       const el = box && box.querySelector("svg");
       if (!el) return;
-      const markup = stripUi(el.outerHTML);
+      let markup = stripUi(el.outerHTML);
+      if (kind === "customer" && format !== "html") markup = decorateCustomerMarkup(markup, { name: projectName, dims, mark: custOpts.mark, title: custOpts.title });
       if (format === "html") {
         const crewMeas = { ...meas, on: true, layers: allLayers };
         const crewRows = buildMeasures({ dims, layout, gates: liveGates, flexPlaced, nets, fence, meas: crewMeas, padBase: pad, north }).map((m) => ({ label: m.label, text: m.text, assumed: m.assumed }));
@@ -30222,8 +30264,8 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
       }
       setExporting(true);
       try {
-        const blob = await svgToPng(markup);
-        showExport({ type: "png", name: `${fileSlug()}-${kind}.png`, url: await blobToDataUrl(blob) });
+        const blob = await svgToPng(markup, format === "jpg" ? "image/jpeg" : "image/png");
+        showExport({ type: "png", name: `${fileSlug()}-${kind}.${format === "jpg" ? "jpg" : "png"}`, url: await blobToDataUrl(blob) });
         setProjectNote("Image ready below.");
       } catch (err) {
         setProjectNote(`Could not make the image: ${err.message}`);
@@ -30493,7 +30535,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
                       onDuplicate: duplicateFlex
                     }
                   ) }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Fold, { id: "export", title: "Export drawings", summary: "Sheets, PNG", open: !!folds.export, onToggle: toggleFold, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ExportPanel, { onExport: exportDrawing, busy: exporting, result: exportOut, onClose: () => showExport(null) }) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Fold, { id: "export", title: "Export drawings", summary: "Sheets, PNG, JPG", open: !!folds.export, onToggle: toggleFold, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ExportPanel, { onExport: exportDrawing, busy: exporting, result: exportOut, onClose: () => showExport(null), opts: custOpts, setOpts: setCustOpts, hasName: !!projectName.trim() }) }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Fold, { id: "notes", title: "Field notes", summary: notes ? "Added" : "Empty", open: !!folds.notes, onToggle: toggleFold, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { "aria-label": "Field notes", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { "data-stamp-note": "true", className: "mb-2 rounded bg-[#e8f5ee] px-2 py-1.5 text-xs font-bold tracking-wide text-[#323c61]", children: STAMP }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -30659,7 +30701,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
             }
           ),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { hidden: true, "aria-hidden": "true", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: customerBox, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CourtSurface, { ...surfaceProps, meas: { ...meas, on: false }, sheenId: "sheen-export-a" }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: customerBox, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CourtSurface, { ...surfaceProps, meas: custOpts.overall ? { ...meas, on: true, layers: { ...Object.fromEntries(MEAS_LAYERS.map(([k]) => [k, k === "overall"])), compass: meas.layers.compass !== false } } : { ...meas, on: false }, sheenId: "sheen-export-a" }) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: crewBox, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CourtSurface, { ...surfaceProps, meas: { ...meas, on: true, layers: allLayers }, sheenId: "sheen-export-b" }) })
           ] })
         ]
