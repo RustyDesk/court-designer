@@ -24556,7 +24556,7 @@
     const rows = (n) => n ? (3.5 * n + 2.5) * k : 0;
     const top = rows((L.overall ? 1 : 0) + (L.zones && across ? 1 : 0));
     const left = rows((L.overall ? 1 : 0) + (L.zones && along ? 1 : 0));
-    return { t: top, l: Math.max(left, L.fence ? 7 : 0), r: L.fence ? 7 : 1.5, b: 6.5 * k };
+    return { t: top, l: Math.max(left, L.fence ? 7 : 0), r: L.fence ? 7 : 1.5, b: meas.noStamp ? 1.5 * k : 6.5 * k };
   }
   var sideCompass = (side, north = 90) => ["North", "East", "South", "West"][(({ north: 0, east: 90, south: 180, west: 270 }[side] - north) % 360 + 360) % 360 / 90];
   function buildMeasures({ dims, layout, gates, flexPlaced, nets, fence, meas, padBase, k = 1, north = 90 }) {
@@ -25565,7 +25565,7 @@
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { x: cx + (cx === 0 ? 5 : -5), y: cy + (cy === 0 ? 3.2 : -3.2), text: "Start here", size: 1.7 * k })
             ] });
           })(),
-          mOn && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-stamp": "true", fontFamily: "system-ui, sans-serif", fill: "#7c2d12", children: stampLines.map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", { x: vb.x + 1, y: vb.y + vb.h - 3.2 * k + i * 2.1 * k, fontSize: Math.min(1.5 * k, vb.w / (t.length * 0.6)), fontWeight: 400, children: t }, i)) })
+          mOn && !meas.noStamp && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-stamp": "true", fontFamily: "system-ui, sans-serif", fill: "#7c2d12", children: stampLines.map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", { x: vb.x + 1, y: vb.y + vb.h - 3.2 * k + i * 2.1 * k, fontSize: Math.min(1.5 * k, vb.w / (t.length * 0.6)), fontWeight: 400, children: t }, i)) })
         ]
       }
     );
@@ -27127,6 +27127,96 @@ ${spec.site ? sec("Jobsite", siteRows(spec.site, row)) : ""}
   }
   var resultBlob = (r) => r.type === "png" ? blobFromDataUrl(r.url) : new Blob([r.html], { type: "text/html" });
   var stripUi = (markup) => markup.replace(/<g data-ui="handle">[\s\S]*?<\/g>/g, "").replace(/<circle[^>]*data-handle[^>]*>[\s\S]*?<\/circle>/g, "");
+  var CRC_TABLE = (() => {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let i = 0; i < 8; i++) c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  var crc32 = (bytes) => {
+    let c = 4294967295;
+    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 255] ^ c >>> 8;
+    return (c ^ 4294967295) >>> 0;
+  };
+  var pngChunk = (type, data) => {
+    const out = new Uint8Array(12 + data.length);
+    const dv = new DataView(out.buffer);
+    dv.setUint32(0, data.length);
+    for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i);
+    out.set(data, 8);
+    dv.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+    return out;
+  };
+  async function canvasToPng(canvas) {
+    const base = new Promise((res) => canvas.toBlob(res, "image/png"));
+    try {
+      if (typeof CompressionStream === "undefined") return await base;
+      const W = canvas.width;
+      const H = canvas.height;
+      const tmp = document.createElement("canvas");
+      tmp.width = W;
+      tmp.height = H;
+      const ctx = tmp.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, W, H);
+      ctx.drawImage(canvas, 0, 0);
+      const px = ctx.getImageData(0, 0, W, H).data;
+      const rowLen = W * 3;
+      const raw = new Uint8Array((rowLen + 1) * H);
+      const rows = [0, 1, 2, 3, 4].map(() => new Uint8Array(rowLen));
+      const cur = new Uint8Array(rowLen);
+      let prev = new Uint8Array(rowLen);
+      for (let y = 0; y < H; y++) {
+        for (let x = 0, i = y * W * 4, j = 0; x < W; x++, i += 4) {
+          cur[j++] = px[i];
+          cur[j++] = px[i + 1];
+          cur[j++] = px[i + 2];
+        }
+        for (let j = 0; j < rowLen; j++) {
+          const a = j >= 3 ? cur[j - 3] : 0;
+          const b = prev[j];
+          const c = j >= 3 ? prev[j - 3] : 0;
+          const pp = a + b - c;
+          const pa = Math.abs(pp - a), pb = Math.abs(pp - b), pc = Math.abs(pp - c);
+          rows[0][j] = cur[j];
+          rows[1][j] = cur[j] - a & 255;
+          rows[2][j] = cur[j] - b & 255;
+          rows[3][j] = cur[j] - (a + b >> 1) & 255;
+          rows[4][j] = cur[j] - (pa <= pb && pa <= pc ? a : pb <= pc ? b : c) & 255;
+        }
+        let best = 0;
+        let bestSum = Infinity;
+        for (let f = 0; f < 5; f++) {
+          let sum = 0;
+          const r = rows[f];
+          for (let j = 0; j < rowLen; j++) sum += r[j] < 128 ? r[j] : 256 - r[j];
+          if (sum < bestSum) {
+            bestSum = sum;
+            best = f;
+          }
+        }
+        raw[y * (rowLen + 1)] = best;
+        raw.set(rows[best], y * (rowLen + 1) + 1);
+        prev = Uint8Array.from(cur);
+      }
+      const packed = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream("deflate"))).arrayBuffer());
+      const head = new Uint8Array(13);
+      const hv = new DataView(head.buffer);
+      hv.setUint32(0, W);
+      hv.setUint32(4, H);
+      head[8] = 8;
+      head[9] = 2;
+      const sig = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+      const blob = new Blob([sig, pngChunk("IHDR", head), pngChunk("IDAT", packed), pngChunk("IEND", new Uint8Array(0))], { type: "image/png" });
+      const own = await base;
+      return own && own.size <= blob.size ? own : blob;
+    } catch (e) {
+      return base;
+    }
+  }
   var decorateCustomerMarkup = (markup, { name = "", dims, mark = false, title = false }) => {
     const nm = String(name || "").trim();
     if (!nm || !mark && !title) return markup;
@@ -27174,7 +27264,8 @@ ${spec.site ? sec("Jobsite", siteRows(spec.site, row)) : ""}
         ctx.fillRect(0, 0, W, H);
         ctx.drawImage(img, 0, 0, W, H);
         URL.revokeObjectURL(url);
-        c.toBlob((b) => b ? resolve(b) : reject(new Error("Could not make the image.")), mime, 0.92);
+        if (mime === "image/png") canvasToPng(c).then((b) => b ? resolve(b) : reject(new Error("Could not make the image.")));
+        else c.toBlob((b) => b ? resolve(b) : reject(new Error("Could not make the image.")), mime, 0.88);
       };
       img.onerror = () => {
         URL.revokeObjectURL(url);
@@ -27314,7 +27405,8 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-col gap-1 text-sm", children: [
           ["overall", "Show the overall pad dimensions (length and width)"],
           ["title", "Project name above the dimensions"],
-          ["mark", "Project name across the whole court, see-through"]
+          ["mark", "Project name across the whole court, see-through"],
+          ["noNote", 'Leave out the "Measured from the nearest corner" note']
         ].map(([k, text]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!opts[k], "aria-label": `Customer image: ${text}`, onChange: (e) => setOpts2({ ...opts, [k]: e.target.checked }), className: "h-4 w-4 accent-[#236e45]" }),
           text
@@ -29026,7 +29118,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
       const ctx = out.getContext("2d");
       let rec;
       try {
-        rec = new MediaRecorder(out.captureStream(30), { mimeType: fmt.mime, videoBitsPerSecond: 9e6 });
+        rec = new MediaRecorder(out.captureStream(30), { mimeType: fmt.mime, videoBitsPerSecond: 55e5 });
       } catch (e) {
         rend.dispose();
         return reject(new Error("Could not start recording."));
@@ -29269,7 +29361,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
       if (!r) return;
       cam.current.dirty = false;
       r.draw(cam.current);
-      const blob = await new Promise((res) => canvasRef.current.toBlob(res, "image/png"));
+      const blob = await canvasToPng(canvasRef.current);
       if (!blob) {
         setErr("Could not make the picture.");
         return;
@@ -29739,7 +29831,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
     const hist = (0, import_react.useRef)({ past: [], future: [], last: null, base: null, timer: null, restoring: false, initial: null });
     const [, bump] = (0, import_react.useState)(0);
     const customerBox = (0, import_react.useRef)(null);
-    const [custOpts, setCustOpts] = (0, import_react.useState)({ overall: false, title: false, mark: false });
+    const [custOpts, setCustOpts] = (0, import_react.useState)({ overall: false, title: false, mark: false, noNote: false });
     const crewBox = (0, import_react.useRef)(null);
     const commitBurst = () => {
       const h = hist.current;
@@ -30701,7 +30793,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
             }
           ),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { hidden: true, "aria-hidden": "true", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: customerBox, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CourtSurface, { ...surfaceProps, meas: custOpts.overall ? { ...meas, on: true, layers: { ...Object.fromEntries(MEAS_LAYERS.map(([k]) => [k, k === "overall"])), compass: meas.layers.compass !== false } } : { ...meas, on: false }, sheenId: "sheen-export-a" }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: customerBox, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CourtSurface, { ...surfaceProps, meas: custOpts.overall ? { ...meas, on: true, noStamp: !!custOpts.noNote, layers: { ...Object.fromEntries(MEAS_LAYERS.map(([k]) => [k, k === "overall"])), compass: meas.layers.compass !== false } } : { ...meas, on: false }, sheenId: "sheen-export-a" }) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: crewBox, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CourtSurface, { ...surfaceProps, meas: { ...meas, on: true, layers: allLayers }, sheenId: "sheen-export-b" }) })
           ] })
         ]
