@@ -24079,7 +24079,7 @@
     const ks = String(turn) === "90" ? [k(90)] : String(turn) === "0" ? [k(0)] : [k(0), k(90)];
     return Math.floor(Math.max(...ks) * 100) / 100;
   };
-  var setOpts = (set) => set ? { scale: set.scale, cl: set.cl, cw: set.cw, ax: set.ax, ay: set.ay, inset: set.inset, fill: set.fill === true, flip: !!set.flip, twin: !!set.twin, noMid: !!set.noMid, noSides: !!set.noSides, turn: set.turn, px: set.px, py: set.py } : null;
+  var setOpts = (set) => set ? { scale: set.scale, cl: set.cl, cw: set.cw, ax: set.ax, ay: set.ay, inset: set.inset, fill: set.fill === true, flip: !!set.flip, twin: !!set.twin, noMid: !!set.noMid, noSides: !!set.noSides, classic: set.classic === true, turn: set.turn, px: set.px, py: set.py } : null;
   var twinOpts = (o, turn) => ({
     ...o,
     flip: !o.flip,
@@ -24191,17 +24191,17 @@
         }
         const o = setOpts(src[id]);
         const turnPref = !split && o && o.turn === 90 ? 90 : pref;
-        const first = { ...placeCourt(z, id, turnPref, split, o), key: `${z.key}-${id}`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !!o.flip, noMid: !!o.noMid, noSides: !!o.noSides, surface: src[id].surface, area: src[id].area };
+        const first = { ...placeCourt(z, id, turnPref, split, o), key: `${z.key}-${id}`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !!o.flip, noMid: !!o.noMid, noSides: !!o.noSides, classic: !!o.classic, surface: src[id].surface, area: src[id].area };
         all.push(first);
         if (o.twin && id === "basketballHalf") {
-          const tw = { ...placeCourt(z, id, first.turn, split, twinOpts(o, first.turn)), key: `${z.key}-${id}-twin`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !o.flip, twin: true, noMid: !!o.noMid, noSides: !!o.noSides, surface: src[id].surface, area: src[id].area };
+          const tw = { ...placeCourt(z, id, first.turn, split, twinOpts(o, first.turn)), key: `${z.key}-${id}-twin`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !o.flip, twin: true, noMid: !!o.noMid, noSides: !!o.noSides, classic: !!o.classic, surface: src[id].surface, area: src[id].area };
           if (first.x0 < tw.x0 + tw.l - 1e-6 && tw.x0 < first.x0 + first.l - 1e-6 && first.y0 < tw.y0 + tw.w - 1e-6 && tw.y0 < first.y0 + first.w - 1e-6) tw.fits = false;
           all.push(tw);
         }
         const extra = !split && Array.isArray(src[id].copies) ? src[id].copies : [];
         extra.forEach((cp, i) => {
           const co = setOpts(cp);
-          all.push({ ...placeCourt(z, id, co.turn === 90 ? 90 : pref, false, co), key: `${z.key}-${id}-c${i + 1}`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !!co.flip, noMid: !!co.noMid, noSides: !!co.noSides, copy: i + 1, surface: cp.surface, area: src[id].area });
+          all.push({ ...placeCourt(z, id, co.turn === 90 ? 90 : pref, false, co), key: `${z.key}-${id}-c${i + 1}`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !!co.flip, noMid: !!co.noMid, noSides: !!co.noSides, classic: !!co.classic, copy: i + 1, surface: cp.surface, area: src[id].area });
         });
       });
     });
@@ -24871,6 +24871,7 @@
       if (s.flip === true) c.flip = true;
       if (s.noMid === true && id === "basketballHalf") c.noMid = true;
       if (s.noSides === true && id === "basketballHalf") c.noSides = true;
+      if (s.classic === true && (id === "basketballHalf" || id === "basketball")) c.classic = true;
       if (s.turn === 90) c.turn = 90;
       if (typeof s.surface === "string" && HEX.test(s.surface)) c.surface = s.surface.toLowerCase();
       if (typeof s.px === "number") c.px = numIn(s.px, 0, 1e3, 0);
@@ -24893,6 +24894,7 @@
         if (s && s.twin === true) o[id].twin = true;
         if (s && s.noMid === true && id === "basketballHalf") o[id].noMid = true;
         if (s && s.noSides === true && id === "basketballHalf") o[id].noSides = true;
+        if (s && s.classic === true && (id === "basketballHalf" || id === "basketball")) o[id].classic = true;
         if (id === "blank") {
           if (s && s.border === true) o[id].border = true;
           if (s && typeof s.bw === "number") o[id].bw = numIn(s.bw, 1, 60, 5);
@@ -25044,8 +25046,16 @@
     };
   }
   var Flip = ({ w, children }) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { transform: `translate(${w} 0) scale(-1 1)`, children });
-  var BasketHalf = () => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M0 3H7.82A22.15 22.15 0 0 1 7.82 47H0" }),
+  var THREE_PT = {
+    ncaa: { cy: 3.354, sx: 9.906, r: 22.146 },
+    classic: { cy: 3, sx: 7.82, r: 22.15 }
+  };
+  var threePtPath = (classic = false, close = false) => {
+    const t = classic ? THREE_PT.classic : THREE_PT.ncaa;
+    return `M0 ${t.cy}H${t.sx}A${t.r} ${t.r} 0 0 1 ${t.sx} ${Math.round((50 - t.cy) * 1e3) / 1e3}H0${close ? "Z" : ""}`;
+  };
+  var BasketHalf = ({ classic = false }) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: threePtPath(classic) }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: "0", y: "19", width: "19", height: "12" }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: "19", cy: "25", r: "6" }),
     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: "4", y1: "22", x2: "4", y2: "28" }),
@@ -25073,20 +25083,20 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: "0", y1: "10", x2: "15", y2: "10" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: "29", y1: "10", x2: "44", y2: "10" })
     ] }),
-    basketball: () => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
+    basketball: ({ classic } = {}) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { width: "94", height: "50" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: "47", y1: "0", x2: "47", y2: "50" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: "47", cy: "25", r: "6" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketHalf, {}),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Flip, { w: 94, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketHalf, {}) })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketHalf, { classic }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Flip, { w: 94, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketHalf, { classic }) })
     ] }),
     /* noMid leaves out the midcourt line and the center-circle arc at the net end.
        noSides leaves out the two sidelines that run from the baseline toward the net, and the two short bits of
        baseline outside the three-point line. The baseline between the three-point legs, and the legs, stay. */
-    basketballHalf: ({ noMid, noSides } = {}) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
-      !noMid && !noSides ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { width: "47", height: "50" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: `${noSides ? "M0 3V47" : "M47 0H0V50H47"}${noSides && !noMid ? "M47 0V50" : ""}` }),
+    basketballHalf: ({ noMid, noSides, classic } = {}) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
+      !noMid && !noSides ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { width: "47", height: "50" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: `${noSides ? `M0 ${(classic ? THREE_PT.classic : THREE_PT.ncaa).cy}V${Math.round((50 - (classic ? THREE_PT.classic : THREE_PT.ncaa).cy) * 1e3) / 1e3}` : "M47 0H0V50H47"}${noSides && !noMid ? "M47 0V50" : ""}` }),
       !noMid && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M47 19A6 6 0 0 0 47 31" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketHalf, {})
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketHalf, { classic })
     ] }),
     futsal: () => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { width: "131.2", height: "65.6" }),
@@ -25102,9 +25112,9 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: "39.34", y1: "0", x2: "39.34", y2: "29.5" })
     ] })
   };
-  var BasketAreas = ({ half, bball }) => {
+  var BasketAreas = ({ half, bball, classic = false }) => {
     const one = /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-      bball.threePt && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M0 0H47V50H0Z M0 3H7.82A22.15 22.15 0 0 1 7.82 47H0Z", fillRule: "evenodd", fill: bball.threePt }),
+      bball.threePt && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: `M0 0H47V50H0Z ${threePtPath(classic, true)}`, fillRule: "evenodd", fill: bball.threePt }),
       bball.keys && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: "0", y: "19", width: "19", height: "12", fill: bball.keys }),
       bball.topKey && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: "19", cy: "25", r: "6", fill: bball.topKey })
     ] });
@@ -25361,13 +25371,13 @@
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("stop", { offset: "0.5", stopColor: "#fff", stopOpacity: "0" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("stop", { offset: "1", stopColor: "#fff", stopOpacity: SHEEN / 2 })
           ] }) }),
-          !overlay && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: vb.x, y: vb.y, width: vb.w, height: vb.h, fill: "#e3e8ee" }),
+          !overlay && !(meas && meas.bare) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: vb.x, y: vb.y, width: vb.w, height: vb.h, fill: "#e3e8ee" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { width: dims.l, height: dims.w, fill: border }),
           bball && bball.outer && layout.zones.filter((z) => courts.some((c) => c.zone === z.key && BBALL_SPORTS.includes(c.sport))).map((z) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { "data-bball": "outer", x: z.x, y: z.y, width: z.l, height: z.w, fill: bball.outer }, `o${z.key}`)),
           mains.map((m, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: m.x, y: m.y, width: m.w, height: m.h, fill: m.fill || main }, i)),
           bball && courts.filter((c) => BBALL_SPORTS.includes(c.sport)).map((c) => {
             const t = courtTransform(c);
-            return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-bball-areas": c.key, transform: t, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketAreas, { half: c.sport === "basketballHalf", bball }) }, `b${c.key}`);
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-bball-areas": c.key, transform: t, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketAreas, { half: c.sport === "basketballHalf", bball, classic: c.classic }) }, `b${c.key}`);
           }),
           courts.filter((c) => c.area && AREA_SHAPES[c.sport]).map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-area": c.key, transform: courtTransform(c), stroke: "none", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { ...AREA_SHAPES[c.sport], fill: c.area }) }, `a${c.key}`)),
           courts.map((c) => {
@@ -25376,7 +25386,7 @@
             const sl = c.sl || sc;
             const sw2 = c.sw || sc;
             const t = courtTransform(c);
-            return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-court": c.key, transform: t, fill: "none", stroke: c.color, strokeWidth: 0.33 / Math.sqrt(sl * sw2), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Markings, { noMid: c.noMid, noSides: c.noSides }) }, c.key);
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-court": c.key, transform: t, fill: "none", stroke: c.color, strokeWidth: 0.33 / Math.sqrt(sl * sw2), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Markings, { noMid: c.noMid, noSides: c.noSides, classic: c.classic }) }, c.key);
           }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { width: dims.l, height: dims.w, fill: `url(#${sheenId})`, pointerEvents: "none" }),
           edit && !overlay && (() => {
@@ -25943,6 +25953,10 @@
         ] })
       ] }),
       tn === 90 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-slate-500", children: "Across: the lines run up and down on the drawing. Use Top or Bottom to pick the side, and drag the arrow handle on the drawing to slide them along that side." }),
+      BBALL_SPORTS.includes(id) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "mt-2 flex cursor-pointer items-center gap-2", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!set.classic, "aria-label": `${label}: use the original three-point corners`, onChange: (e) => patch({ classic: e.target.checked ? true : void 0 }), className: "h-4 w-4 accent-[#236e45]" }),
+        "Use the original three-point corners (3 ft from the sideline, 7.82 ft straight section) instead of the NCAA 2024-25 shape"
+      ] }),
       id === "basketballHalf" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap items-center gap-2", role: "group", "aria-label": `${label}: half court direction`, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": !!set.flip, onClick: () => patch({ flip: set.flip ? void 0 : true }), className: chip(!!set.flip), children: "Face the other way" }),
         !copy && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex cursor-pointer items-center gap-2", children: [
@@ -27217,7 +27231,38 @@ ${spec.site ? sec("Jobsite", siteRows(spec.site, row)) : ""}
       return base;
     }
   }
-  var decorateCustomerMarkup = (markup, { name = "", dims, mark = false, title = false }) => {
+  async function composeCourtOnSitePhoto({ markup, site, dims }) {
+    const img = site.image;
+    const m = /viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"/.exec(markup);
+    if (!m) throw new Error("The drawing has no size.");
+    const [vx, vy, vw, vh] = [1, 2, 3, 4].map((i) => parseFloat(m[i]));
+    const pic = new Image();
+    pic.src = img.src;
+    await pic.decode();
+    const SW = img.ftAcross;
+    const SH = SW * (img.sa || 520 / 800);
+    const k = Math.min(SW / pic.naturalWidth, SH / pic.naturalHeight);
+    const pw = pic.naturalWidth * k;
+    const ph = pic.naturalHeight * k;
+    const px = (SW - pw) / 2;
+    const py = (SH - ph) / 2;
+    const blob = await (await fetch(img.src)).blob();
+    const data = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.onerror = rej;
+      r.readAsDataURL(blob);
+    });
+    const cx = img.x * SW;
+    const cy = img.y * SH;
+    const nested = stripUi(markup).replace(/<svg /, `<svg x="${cx - dims.l / 2 + vx}" y="${cy - dims.w / 2 + vy}" width="${vw}" height="${vh}" `).replace(/ style="[^"]*"/, "").replace(/ class="[^"]*"/, "");
+    const rot = img.rot ? ` transform="rotate(${img.rot} ${cx} ${cy})"` : "";
+    return {
+      markup: `<svg viewBox="${px} ${py} ${pw} ${ph}"><rect x="${px}" y="${py}" width="${pw}" height="${ph}" fill="#cbd5e1"/><image href="${data}" x="${px}" y="${py}" width="${pw}" height="${ph}" preserveAspectRatio="none"/><g opacity="${site.opacity}"><g${rot}>${nested}</g></g></svg>`,
+      area: { cx, cy, l: dims.l, w: dims.w }
+    };
+  }
+  var decorateCustomerMarkup = (markup, { name = "", dims, mark = false, title = false, area = null }) => {
     const nm = String(name || "").trim();
     if (!nm || !mark && !title) return markup;
     const m = /viewBox="([-\d.]+) ([-\d.]+) ([\d.]+) ([\d.]+)"/.exec(markup);
@@ -27228,8 +27273,9 @@ ${spec.site ? sec("Jobsite", siteRows(spec.site, row)) : ""}
     let out = markup;
     let body = "";
     if (mark) {
-      const fs = Math.max(2, Math.min(dims.w * 0.3, dims.l * 0.88 / (txt.length * 0.6)));
-      body += `<text x="${dims.l / 2}" y="${dims.w / 2}" text-anchor="middle" dominant-baseline="central" ${font} font-size="${fs}" fill="#8fe0b0" fill-opacity="0.5" stroke="#323c61" stroke-opacity="0.45" stroke-width="${fs * 0.018}" data-name-mark="1">${txt}</text>`;
+      const ar = area || { cx: dims.l / 2, cy: dims.w / 2, l: dims.l, w: dims.w };
+      const fs = Math.max(2, Math.min(ar.w * 0.3, ar.l * 0.88 / (txt.length * 0.6)));
+      body += `<text x="${ar.cx}" y="${ar.cy}" text-anchor="middle" dominant-baseline="central" ${font} font-size="${fs}" fill="#8fe0b0" fill-opacity="0.5" stroke="#323c61" stroke-opacity="0.45" stroke-width="${fs * 0.018}" data-name-mark="1">${txt}</text>`;
     }
     let box = [vx, vy, vw, vh];
     if (title) {
@@ -27388,7 +27434,7 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
     ] });
   }
   function ExportPanel({ onExport, busy, result = null, onClose = () => {
-  }, opts = null, setOpts: setOpts2 = null, hasName = false }) {
+  }, opts = null, setOpts: setOpts2 = null, hasName = false, hasPhoto = false }) {
     const items = [
       ["customer", "html", "Customer sheet"],
       ["crew", "html", "Crew sheet"],
@@ -27406,12 +27452,15 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
           ["overall", "Show the overall pad dimensions (length and width)"],
           ["title", "Project name above the dimensions"],
           ["mark", "Project name across the whole court, see-through"],
+          ["photo", "Put the site photo under the court (placed, turned and faded as on the Site photo tab)"],
           ["noNote", 'Leave out the "Measured from the nearest corner" note']
         ].map(([k, text]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!opts[k], "aria-label": `Customer image: ${text}`, onChange: (e) => setOpts2({ ...opts, [k]: e.target.checked }), className: "h-4 w-4 accent-[#236e45]" }),
           text
         ] }, k)) }),
         (opts.title || opts.mark) && !hasName && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-amber-800", children: "Add a project name first. The name options need one." }),
+        opts.photo && !hasPhoto && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-amber-800", children: "Upload a photo on the Site photo tab first. Without one the image is made without it." }),
+        opts.photo && hasPhoto && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: "The image becomes the photo with this court on it. Change its place, turn, size and strength on the Site photo tab." }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: "These apply to the customer images (PNG and JPG)." })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-wrap gap-2", children: items.map(([kind, fmt, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", disabled: busy, onClick: () => onExport(kind, fmt), className: btn2, children: label }, label)) }),
@@ -27840,6 +27889,11 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
       ro.observe(stageRef.current);
       return () => ro.disconnect();
     }, [active]);
+    (0, import_react.useEffect)(() => {
+      if (!img.src) return;
+      const sa = Math.round(size.h / size.w * 1e4) / 1e4;
+      if (Math.abs((img.sa || 0) - sa) > 1e-3) setSite((s) => ({ ...s, image: { ...s.image, sa } }));
+    }, [size.w, size.h, img.src]);
     const onFile = (e) => {
       const file = e.target.files && e.target.files[0];
       e.target.value = "";
@@ -29831,7 +29885,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
     const hist = (0, import_react.useRef)({ past: [], future: [], last: null, base: null, timer: null, restoring: false, initial: null });
     const [, bump] = (0, import_react.useState)(0);
     const customerBox = (0, import_react.useRef)(null);
-    const [custOpts, setCustOpts] = (0, import_react.useState)({ overall: false, title: false, mark: false, noNote: false });
+    const [custOpts, setCustOpts] = (0, import_react.useState)({ overall: false, title: false, mark: false, noNote: false, photo: false });
     const crewBox = (0, import_react.useRef)(null);
     const commitBurst = () => {
       const h = hist.current;
@@ -30344,7 +30398,19 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
       const el = box && box.querySelector("svg");
       if (!el) return;
       let markup = stripUi(el.outerHTML);
-      if (kind === "customer" && format !== "html") markup = decorateCustomerMarkup(markup, { name: projectName, dims, mark: custOpts.mark, title: custOpts.title });
+      if (kind === "customer" && format !== "html") {
+        let area = null;
+        if (custOpts.photo && site.image.src) {
+          try {
+            const c = await composeCourtOnSitePhoto({ markup, site, dims });
+            markup = c.markup;
+            area = c.area;
+          } catch (err) {
+            setProjectNote(`Could not place the court on the photo: ${err.message}`);
+          }
+        }
+        markup = decorateCustomerMarkup(markup, { name: projectName, dims, mark: custOpts.mark, title: custOpts.title, area });
+      }
       if (format === "html") {
         const crewMeas = { ...meas, on: true, layers: allLayers };
         const crewRows = buildMeasures({ dims, layout, gates: liveGates, flexPlaced, nets, fence, meas: crewMeas, padBase: pad, north }).map((m) => ({ label: m.label, text: m.text, assumed: m.assumed }));
@@ -30627,7 +30693,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
                       onDuplicate: duplicateFlex
                     }
                   ) }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Fold, { id: "export", title: "Export drawings", summary: "Sheets, PNG, JPG", open: !!folds.export, onToggle: toggleFold, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ExportPanel, { onExport: exportDrawing, busy: exporting, result: exportOut, onClose: () => showExport(null), opts: custOpts, setOpts: setCustOpts, hasName: !!projectName.trim() }) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Fold, { id: "export", title: "Export drawings", summary: "Sheets, PNG, JPG", open: !!folds.export, onToggle: toggleFold, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ExportPanel, { onExport: exportDrawing, busy: exporting, result: exportOut, onClose: () => showExport(null), opts: custOpts, setOpts: setCustOpts, hasName: !!projectName.trim(), hasPhoto: !!site.image.src }) }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Fold, { id: "notes", title: "Field notes", summary: notes ? "Added" : "Empty", open: !!folds.notes, onToggle: toggleFold, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { "aria-label": "Field notes", children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { "data-stamp-note": "true", className: "mb-2 rounded bg-[#e8f5ee] px-2 py-1.5 text-xs font-bold tracking-wide text-[#323c61]", children: STAMP }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -30793,7 +30859,11 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
             }
           ),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { hidden: true, "aria-hidden": "true", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: customerBox, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CourtSurface, { ...surfaceProps, meas: custOpts.overall ? { ...meas, on: true, noStamp: !!custOpts.noNote, layers: { ...Object.fromEntries(MEAS_LAYERS.map(([k]) => [k, k === "overall"])), compass: meas.layers.compass !== false } } : { ...meas, on: false }, sheenId: "sheen-export-a" }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: customerBox, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CourtSurface, { ...surfaceProps, meas: (() => {
+              const noCompass = custOpts.photo && !!site.image.src;
+              const comp = meas.layers.compass !== false && !noCompass;
+              return custOpts.overall ? { ...meas, on: true, bare: noCompass, noStamp: !!custOpts.noNote, layers: { ...Object.fromEntries(MEAS_LAYERS.map(([k]) => [k, k === "overall"])), compass: comp } } : { ...meas, on: false, bare: noCompass, layers: { ...meas.layers, compass: comp } };
+            })(), sheenId: "sheen-export-a" }) }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: crewBox, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CourtSurface, { ...surfaceProps, meas: { ...meas, on: true, layers: allLayers }, sheenId: "sheen-export-b" }) })
           ] })
         ]
