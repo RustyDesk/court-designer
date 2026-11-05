@@ -24079,7 +24079,7 @@
     const ks = String(turn) === "90" ? [k(90)] : String(turn) === "0" ? [k(0)] : [k(0), k(90)];
     return Math.floor(Math.max(...ks) * 100) / 100;
   };
-  var setOpts = (set) => set ? { scale: set.scale, cl: set.cl, cw: set.cw, ax: set.ax, ay: set.ay, inset: set.inset, fill: set.fill === true, flip: !!set.flip, twin: !!set.twin, noMid: !!set.noMid, noSides: !!set.noSides, classic: set.classic === true, turn: set.turn, px: set.px, py: set.py } : null;
+  var setOpts = (set) => set ? { scale: set.scale, cl: set.cl, cw: set.cw, ax: set.ax, ay: set.ay, inset: set.inset, fill: set.fill === true, flip: !!set.flip, twin: !!set.twin, noMid: !!set.noMid, noSides: !!set.noSides, rules: rulesOf(set), turn: set.turn, px: set.px, py: set.py } : null;
   var twinOpts = (o, turn) => ({
     ...o,
     flip: !o.flip,
@@ -24191,17 +24191,17 @@
         }
         const o = setOpts(src[id]);
         const turnPref = !split && o && o.turn === 90 ? 90 : pref;
-        const first = { ...placeCourt(z, id, turnPref, split, o), key: `${z.key}-${id}`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !!o.flip, noMid: !!o.noMid, noSides: !!o.noSides, classic: !!o.classic, surface: src[id].surface, area: src[id].area };
+        const first = { ...placeCourt(z, id, turnPref, split, o), key: `${z.key}-${id}`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !!o.flip, noMid: !!o.noMid, noSides: !!o.noSides, rules: o.rules, surface: src[id].surface, area: src[id].area };
         all.push(first);
         if (o.twin && id === "basketballHalf") {
-          const tw = { ...placeCourt(z, id, first.turn, split, twinOpts(o, first.turn)), key: `${z.key}-${id}-twin`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !o.flip, twin: true, noMid: !!o.noMid, noSides: !!o.noSides, classic: !!o.classic, surface: src[id].surface, area: src[id].area };
+          const tw = { ...placeCourt(z, id, first.turn, split, twinOpts(o, first.turn)), key: `${z.key}-${id}-twin`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !o.flip, twin: true, noMid: !!o.noMid, noSides: !!o.noSides, rules: o.rules, surface: src[id].surface, area: src[id].area };
           if (first.x0 < tw.x0 + tw.l - 1e-6 && tw.x0 < first.x0 + first.l - 1e-6 && first.y0 < tw.y0 + tw.w - 1e-6 && tw.y0 < first.y0 + first.w - 1e-6) tw.fits = false;
           all.push(tw);
         }
         const extra = !split && Array.isArray(src[id].copies) ? src[id].copies : [];
         extra.forEach((cp, i) => {
           const co = setOpts(cp);
-          all.push({ ...placeCourt(z, id, co.turn === 90 ? 90 : pref, false, co), key: `${z.key}-${id}-c${i + 1}`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !!co.flip, noMid: !!co.noMid, noSides: !!co.noSides, classic: !!co.classic, copy: i + 1, surface: cp.surface, area: src[id].area });
+          all.push({ ...placeCourt(z, id, co.turn === 90 ? 90 : pref, false, co), key: `${z.key}-${id}-c${i + 1}`, zone: z.key, zoneLabel: z.label, rect: z, color: src[id].color, flip: !!co.flip, noMid: !!co.noMid, noSides: !!co.noSides, rules: co.rules, copy: i + 1, surface: cp.surface, area: src[id].area });
         });
       });
     });
@@ -24871,7 +24871,7 @@
       if (s.flip === true) c.flip = true;
       if (s.noMid === true && id === "basketballHalf") c.noMid = true;
       if (s.noSides === true && id === "basketballHalf") c.noSides = true;
-      if (s.classic === true && (id === "basketballHalf" || id === "basketball")) c.classic = true;
+      if ((id === "basketballHalf" || id === "basketball") && rulesOf(s) !== "hs") c.rules = rulesOf(s);
       if (s.turn === 90) c.turn = 90;
       if (typeof s.surface === "string" && HEX.test(s.surface)) c.surface = s.surface.toLowerCase();
       if (typeof s.px === "number") c.px = numIn(s.px, 0, 1e3, 0);
@@ -24894,7 +24894,7 @@
         if (s && s.twin === true) o[id].twin = true;
         if (s && s.noMid === true && id === "basketballHalf") o[id].noMid = true;
         if (s && s.noSides === true && id === "basketballHalf") o[id].noSides = true;
-        if (s && s.classic === true && (id === "basketballHalf" || id === "basketball")) o[id].classic = true;
+        if (s && (id === "basketballHalf" || id === "basketball") && rulesOf(s) !== "hs") o[id].rules = rulesOf(s);
         if (id === "blank") {
           if (s && s.border === true) o[id].border = true;
           if (s && typeof s.bw === "number") o[id].bw = numIn(s.bw, 1, 60, 5);
@@ -25046,21 +25046,30 @@
     };
   }
   var Flip = ({ w, children }) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { transform: `translate(${w} 0) scale(-1 1)`, children });
-  var THREE_PT = {
-    ncaa: { cy: 3.354, sx: 9.906, r: 22.146 },
-    classic: { cy: 3, sx: 7.82, r: 22.15 }
+  var LINE_RULES = {
+    hs: { name: "High school (NFHS)", cy: 5.25, sx: 5.25, r: 19.75, lane: 12, restricted: false },
+    ncaa: { name: "College (NCAA 2024-25)", cy: 3.354, sx: 9.906, r: 22.146, lane: 12, restricted: false },
+    nba: { name: "NBA", cy: 3, sx: 14.201, r: 23.75, lane: 16, restricted: true },
+    classic: { name: "Original (earlier version)", cy: 3, sx: 7.82, r: 22.15, lane: 12, restricted: false }
   };
-  var threePtPath = (classic = false, close = false) => {
-    const t = classic ? THREE_PT.classic : THREE_PT.ncaa;
-    return `M0 ${t.cy}H${t.sx}A${t.r} ${t.r} 0 0 1 ${t.sx} ${Math.round((50 - t.cy) * 1e3) / 1e3}H0${close ? "Z" : ""}`;
+  var rulesOf = (set) => set && LINE_RULES[set.rules] ? set.rules : set && set.classic === true ? "classic" : "hs";
+  var ruleOf = (rules) => LINE_RULES[rules] || LINE_RULES.hs;
+  var r3 = (n) => Math.round(n * 1e3) / 1e3;
+  var threePtPath = (rules = "hs", close = false) => {
+    const t = ruleOf(rules);
+    return `M0 ${t.cy}H${t.sx}A${t.r} ${t.r} 0 0 1 ${t.sx} ${r3(50 - t.cy)}H0${close ? "Z" : ""}`;
   };
-  var BasketHalf = ({ classic = false }) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: threePtPath(classic) }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: "0", y: "19", width: "19", height: "12" }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: "19", cy: "25", r: "6" }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: "4", y1: "22", x2: "4", y2: "28" }),
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: "5.25", cy: "25", r: "0.75" })
-  ] });
+  var BasketHalf = ({ rules = "hs" }) => {
+    const t = ruleOf(rules);
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: threePtPath(rules) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: "0", y: r3(25 - t.lane / 2), width: "19", height: t.lane }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: "19", cy: "25", r: "6" }),
+      t.restricted && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M4 21H5.25A4 4 0 0 1 5.25 29H4" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: "4", y1: "22", x2: "4", y2: "28" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: "5.25", cy: "25", r: "0.75" })
+    ] });
+  };
   var FutsalHalf = () => {
     const r = 19.69, y1 = 27.62, y2 = 37.98;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: `M0 ${y1 - r}A${r} ${r} 0 0 1 ${r} ${y1}V${y2}A${r} ${r} 0 0 1 0 ${y2 + r}` });
@@ -25083,20 +25092,20 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: "0", y1: "10", x2: "15", y2: "10" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: "29", y1: "10", x2: "44", y2: "10" })
     ] }),
-    basketball: ({ classic } = {}) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
+    basketball: ({ rules } = {}) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { width: "94", height: "50" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: "47", y1: "0", x2: "47", y2: "50" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: "47", cy: "25", r: "6" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketHalf, { classic }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Flip, { w: 94, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketHalf, { classic }) })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketHalf, { rules }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Flip, { w: 94, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketHalf, { rules }) })
     ] }),
     /* noMid leaves out the midcourt line and the center-circle arc at the net end.
        noSides leaves out the two sidelines that run from the baseline toward the net, and the two short bits of
        baseline outside the three-point line. The baseline between the three-point legs, and the legs, stay. */
-    basketballHalf: ({ noMid, noSides, classic } = {}) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
-      !noMid && !noSides ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { width: "47", height: "50" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: `${noSides ? `M0 ${(classic ? THREE_PT.classic : THREE_PT.ncaa).cy}V${Math.round((50 - (classic ? THREE_PT.classic : THREE_PT.ncaa).cy) * 1e3) / 1e3}` : "M47 0H0V50H47"}${noSides && !noMid ? "M47 0V50" : ""}` }),
+    basketballHalf: ({ noMid, noSides, rules } = {}) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
+      !noMid && !noSides ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { width: "47", height: "50" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: `${noSides ? `M0 ${ruleOf(rules).cy}V${r3(50 - ruleOf(rules).cy)}` : "M47 0H0V50H47"}${noSides && !noMid ? "M47 0V50" : ""}` }),
       !noMid && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: "M47 19A6 6 0 0 0 47 31" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketHalf, { classic })
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketHalf, { rules })
     ] }),
     futsal: () => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { width: "131.2", height: "65.6" }),
@@ -25112,10 +25121,10 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: "39.34", y1: "0", x2: "39.34", y2: "29.5" })
     ] })
   };
-  var BasketAreas = ({ half, bball, classic = false }) => {
+  var BasketAreas = ({ half, bball, rules = "hs" }) => {
     const one = /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-      bball.threePt && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: `M0 0H47V50H0Z ${threePtPath(classic, true)}`, fillRule: "evenodd", fill: bball.threePt }),
-      bball.keys && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: "0", y: "19", width: "19", height: "12", fill: bball.keys }),
+      bball.threePt && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: `M0 0H47V50H0Z ${threePtPath(rules, true)}`, fillRule: "evenodd", fill: bball.threePt }),
+      bball.keys && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: "0", y: r3(25 - ruleOf(rules).lane / 2), width: "19", height: ruleOf(rules).lane, fill: bball.keys }),
       bball.topKey && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: "19", cy: "25", r: "6", fill: bball.topKey })
     ] });
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { stroke: "none", children: [
@@ -25377,7 +25386,7 @@
           mains.map((m, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: m.x, y: m.y, width: m.w, height: m.h, fill: m.fill || main }, i)),
           bball && courts.filter((c) => BBALL_SPORTS.includes(c.sport)).map((c) => {
             const t = courtTransform(c);
-            return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-bball-areas": c.key, transform: t, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketAreas, { half: c.sport === "basketballHalf", bball, classic: c.classic }) }, `b${c.key}`);
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-bball-areas": c.key, transform: t, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketAreas, { half: c.sport === "basketballHalf", bball, rules: c.rules }) }, `b${c.key}`);
           }),
           courts.filter((c) => c.area && AREA_SHAPES[c.sport]).map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-area": c.key, transform: courtTransform(c), stroke: "none", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { ...AREA_SHAPES[c.sport], fill: c.area }) }, `a${c.key}`)),
           courts.map((c) => {
@@ -25386,7 +25395,7 @@
             const sl = c.sl || sc;
             const sw2 = c.sw || sc;
             const t = courtTransform(c);
-            return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-court": c.key, transform: t, fill: "none", stroke: c.color, strokeWidth: 0.33 / Math.sqrt(sl * sw2), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Markings, { noMid: c.noMid, noSides: c.noSides, classic: c.classic }) }, c.key);
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-court": c.key, transform: t, fill: "none", stroke: c.color, strokeWidth: 0.33 / Math.sqrt(sl * sw2), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Markings, { noMid: c.noMid, noSides: c.noSides, rules: c.rules }) }, c.key);
           }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { width: dims.l, height: dims.w, fill: `url(#${sheenId})`, pointerEvents: "none" }),
           edit && !overlay && (() => {
@@ -25953,9 +25962,12 @@
         ] })
       ] }),
       tn === 90 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-slate-500", children: "Across: the lines run up and down on the drawing. Use Top or Bottom to pick the side, and drag the arrow handle on the drawing to slide them along that side." }),
-      BBALL_SPORTS.includes(id) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "mt-2 flex cursor-pointer items-center gap-2", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!set.classic, "aria-label": `${label}: use the original three-point corners`, onChange: (e) => patch({ classic: e.target.checked ? true : void 0 }), className: "h-4 w-4 accent-[#236e45]" }),
-        "Use the original three-point corners (3 ft from the sideline, 7.82 ft straight section) instead of the NCAA 2024-25 shape"
+      BBALL_SPORTS.includes(id) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2", role: "group", "aria-label": `${label}: line style`, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "flex flex-wrap items-center gap-1", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "w-20", children: "Line style" }),
+          Object.entries(LINE_RULES).map(([k, r]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": rulesOf(set) === k, onClick: () => patch({ rules: k === "hs" ? void 0 : k, classic: void 0 }), className: chip(rulesOf(set) === k), children: r.name }, k))
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-slate-500", children: "Sets the three-point line, the lane width and the restricted-area arc. High school is the default." })
       ] }),
       id === "basketballHalf" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap items-center gap-2", role: "group", "aria-label": `${label}: half court direction`, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": !!set.flip, onClick: () => patch({ flip: set.flip ? void 0 : true }), className: chip(!!set.flip), children: "Face the other way" }),
