@@ -24261,6 +24261,7 @@
   var SHADE = { len: 12, depth: 8 };
   var GOAL_BOARD = 4;
   var GOAL_POLE_REG = 4;
+  var GOAL_POLE_RANGE = [2, 6];
   var RIM_HEIGHTS = [7.5, 8, 8.5, 9, 9.5, 10];
   var GOAL_RIM = 5.25;
   var GOAL_RIM_R = 0.75;
@@ -24331,7 +24332,7 @@
     const flush = item.type === "practiceWall";
     const integrated = item.type === "futsalGoal" && item.fenceInt === true && fenceOn;
     const reg = item.type === "goal" && item.reg === true;
-    if (reg) out = GOAL_POLE_REG;
+    if (reg) out = clamp(typeof item.regOut === "number" ? item.regOut : GOAL_POLE_REG, GOAL_POLE_RANGE[0], GOAL_POLE_RANGE[1]);
     if (flush) out = r1(Math.max(0, b.room - a.shape.depth / 2));
     if (integrated) out = r1(Math.max(0, b.room));
     return {
@@ -24949,7 +24950,7 @@
     const placed = (Array.isArray(p.placed) ? p.placed : []).filter((x) => x && ACCESSORIES[x.type] && ACCESSORIES[x.type].kind === "flex").filter((x) => (counts[x.type] = (counts[x.type] || 0) + 1) <= ACCESSORIES[x.type].max).map((x, i) => {
       const uid = numIn(x.uid, 1, 1e9, 1e3 + i);
       maxUid = Math.max(maxUid, uid);
-      return { uid, type: x.type, edge: oneOf(x.edge, SIDES, "north"), along: numIn(x.along, 0, MAX, 0), out: numIn(x.out, 0, MAX, 0), auto: boolOr(x.auto, false), ...x.type === "futsalGoal" && x.fenceInt === true ? { fenceInt: true } : {}, ...x.type === "goal" && x.reg === true ? { reg: true } : {}, ...x.type === "goal" && x.adj === true ? { adj: true, rimH: RIM_HEIGHTS.includes(Number(x.rimH)) ? Number(x.rimH) : 10 } : {}, ...x.type === "bench" && x.shade === true ? { shade: true } : {}, ...x.type === "bench" && BENCH_STYLES[x.style] && x.style !== "back" ? { style: x.style } : {}, ...x.type === "bench" && x.shade === true && CANOPY_COLORS[x.canopy] && x.canopy !== "green" ? { canopy: x.canopy } : {}, ...x.type === "bench" && x.shade === true && x.logo === true ? { logo: true } : {}, ...typeof x.court === "string" ? { court: x.court.slice(0, 60) } : {} };
+      return { uid, type: x.type, edge: oneOf(x.edge, SIDES, "north"), along: numIn(x.along, 0, MAX, 0), out: numIn(x.out, 0, MAX, 0), auto: boolOr(x.auto, false), ...x.type === "futsalGoal" && x.fenceInt === true ? { fenceInt: true } : {}, ...x.type === "goal" && x.reg === true ? { reg: true, ...typeof x.regOut === "number" && x.regOut !== GOAL_POLE_REG ? { regOut: numIn(x.regOut, GOAL_POLE_RANGE[0], GOAL_POLE_RANGE[1], GOAL_POLE_REG) } : {} } : {}, ...x.type === "goal" && x.adj === true ? { adj: true, rimH: RIM_HEIGHTS.includes(Number(x.rimH)) ? Number(x.rimH) : 10 } : {}, ...x.type === "bench" && x.shade === true ? { shade: true } : {}, ...x.type === "bench" && BENCH_STYLES[x.style] && x.style !== "back" ? { style: x.style } : {}, ...x.type === "bench" && x.shade === true && CANOPY_COLORS[x.canopy] && x.canopy !== "green" ? { canopy: x.canopy } : {}, ...x.type === "bench" && x.shade === true && x.logo === true ? { logo: true } : {}, ...typeof x.court === "string" ? { court: x.court.slice(0, 60) } : {} };
     });
     const fx = p.fixedOn || {};
     const mv = p.meas || {};
@@ -26752,10 +26753,14 @@
               ] }),
               type === "goal" && p.ok && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 text-xs text-slate-700", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "mb-1 flex items-center gap-2", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!p.reg, "aria-label": `Basketball goal ${i + 1} regulation setback`, onChange: (e) => onPatch(p.uid, { reg: e.target.checked ? true : void 0 }), className: "h-4 w-4 accent-[#236e45]" }),
-                  "Regulation setback: pole ",
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!p.reg, "aria-label": `Basketball goal ${i + 1} regulation setback`, onChange: (e) => onPatch(p.uid, { reg: e.target.checked ? true : void 0, regOut: void 0 }), className: "h-4 w-4 accent-[#236e45]" }),
+                  "Place the pole outside, ",
+                  GOAL_POLE_RANGE[0],
+                  " to ",
+                  GOAL_POLE_RANGE[1],
+                  " ft behind the baseline (",
                   GOAL_POLE_REG,
-                  " ft behind the baseline, outside the surface if needed"
+                  " ft is the default)"
                 ] }),
                 p.reg && p.beyond > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "mb-1 text-slate-500", children: [
                   "The pole stands ",
@@ -26808,29 +26813,36 @@
                 [
                   ["Along the side", "along", p.b.aMin, p.b.aMax],
                   ["Setback from the court", "out", p.b.oMin, p.b.oMax]
-                ].filter(([, key]) => !(key === "out" && (p.flush || p.integrated))).map(([label, key, lo, hi]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 text-xs text-slate-600", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex items-center justify-between gap-2", children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex items-center gap-1", children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumField, { label: `${a.name} ${i + 1} ${label}`, value: p[key], min: lo, max: hi, step: 0.5, onCommit: (v) => onPatch(p.uid, { [key]: v }) }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "ft" })
-                    ] })
-                  ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "input",
-                    {
-                      type: "range",
-                      min: lo,
-                      max: hi,
-                      step: "0.5",
-                      value: p[key],
-                      "aria-label": `${a.name} ${i + 1} ${label} slider`,
-                      onChange: (e) => onPatch(p.uid, { [key]: parseFloat(e.target.value) }),
-                      className: "w-full accent-[#236e45]"
-                    }
-                  ),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-slate-500", children: key === "out" ? p.outside ? `Kept outside the surface${fenceOn ? " and fence" : ""}. ${lo} to ${hi} ft from the court.` : `Usual setback ${a.typical[0]} to ${a.typical[1]} ft (not confirmed yet). Room available ${hi} ft.` : `0 to ${hi} ft` })
-                ] }, key)),
+                ].filter(([, key]) => !(key === "out" && (p.flush || p.integrated))).map(([label0, key, lo0, hi0]) => {
+                  const outside = key === "out" && p.type === "goal" && p.reg;
+                  const label = outside ? "Pole distance behind the baseline" : label0;
+                  const lo = outside ? GOAL_POLE_RANGE[0] : lo0;
+                  const hi = outside ? GOAL_POLE_RANGE[1] : hi0;
+                  const field = outside ? "regOut" : key;
+                  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-3 text-xs text-slate-600", children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex items-center justify-between gap-2", children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: label }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { className: "flex items-center gap-1", children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumField, { label: `${a.name} ${i + 1} ${label}`, value: p[key], min: lo, max: hi, step: 0.5, onCommit: (v) => onPatch(p.uid, { [field]: v }) }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "ft" })
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "input",
+                      {
+                        type: "range",
+                        min: lo,
+                        max: hi,
+                        step: "0.5",
+                        value: p[key],
+                        "aria-label": `${a.name} ${i + 1} ${label} slider`,
+                        onChange: (e) => onPatch(p.uid, { [field]: parseFloat(e.target.value) }),
+                        className: "w-full accent-[#236e45]"
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: "text-slate-500", children: key === "out" ? outside ? `${lo} to ${hi} ft behind the baseline. At ${GOAL_POLE_REG} ft the pole stands ${GOAL_POLE_REG} ft outside a court that runs to the surface edge.` : p.outside ? `Kept outside the surface${fenceOn ? " and fence" : ""}. ${lo} to ${hi} ft from the court.` : `Usual setback ${a.typical[0]} to ${a.typical[1]} ft (not confirmed yet). Room available ${hi} ft.` : `0 to ${hi} ft` })
+                  ] }, key);
+                }),
                 p.offTypical && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { role: "status", className: "mt-2 rounded bg-amber-100 px-2 py-1 text-xs text-amber-800", children: [
                   "This ",
                   a.name.toLowerCase(),
