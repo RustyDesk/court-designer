@@ -24160,6 +24160,36 @@
     }
     return { courts: out, across: best.nx, down: best.ny };
   };
+  var PB_SHAPE = { 1: [1, 1], 2: [2, 1], 3: [3, 1], 4: [2, 2], 6: [3, 2], 8: [4, 2] };
+  var PB_COUNTS = [1, 2, 4, 6];
+  var packNeed = (n, turn = 90) => {
+    const s = SPORTS.pickleball.play;
+    const [a, b] = PB_SHAPE[n] || [1, 1];
+    const nx = turn === 90 ? a : b;
+    const ny = turn === 90 ? b : a;
+    const cl = turn === 90 ? s.w : s.l;
+    const cw = turn === 90 ? s.l : s.w;
+    const gx = turn === 90 ? PB_PACK.gapSide : PB_PACK.gapEnd;
+    const gy = turn === 90 ? PB_PACK.gapEnd : PB_PACK.gapSide;
+    const mx = turn === 90 ? PB_PACK.edgeSide : PB_PACK.edgeEnd;
+    const my = turn === 90 ? PB_PACK.edgeEnd : PB_PACK.edgeSide;
+    return { nx, ny, cl, cw, gx, gy, x: nx * cl + (nx - 1) * gx + 2 * mx, y: ny * cw + (ny - 1) * gy + 2 * my };
+  };
+  var packCount = (rect, n) => {
+    const t = [90, 0].map((turn) => ({ turn, ...packNeed(n, turn) })).find((q) => q.x <= rect.l + 1e-6 && q.y <= rect.w + 1e-6);
+    if (!t) return null;
+    const totalL = t.nx * t.cl + (t.nx - 1) * t.gx;
+    const totalW = t.ny * t.cw + (t.ny - 1) * t.gy;
+    const out = [];
+    for (let j = 0; j < t.ny; j++) {
+      for (let i = 0; i < t.nx; i++) {
+        const x0 = rect.x + (rect.l - totalL) / 2 + i * (t.cl + t.gx);
+        const y0 = rect.y + (rect.w - totalW) / 2 + j * (t.cw + t.gy);
+        out.push({ sport: "pickleball", turn: t.turn, fits: true, scale: 1, l: t.cl, w: t.cw, cx: x0 + t.cl / 2, cy: y0 + t.cw / 2, x0, y0 });
+      }
+    }
+    return out;
+  };
   var groupCourts = (cs) => {
     const m = /* @__PURE__ */ new Map();
     cs.forEach((c) => {
@@ -24186,6 +24216,13 @@
           const pk = packPickleball(z);
           if (pk.courts.length) {
             pk.courts.forEach((pc, i) => all.push({ ...pc, key: `${z.key}-pickleball-${i}`, zone: z.key, zoneLabel: z.label, rect: z, color: src.tennis.color, converted: true, area: src.pickleball && src.pickleball.area }));
+            return;
+          }
+        }
+        if (split && id === "pickleball" && src.pickleball.count > 1) {
+          const pk = packCount(z, src.pickleball.count);
+          if (pk) {
+            pk.forEach((pc, i) => all.push({ ...pc, key: `${z.key}-pickleball-${i}`, zone: z.key, zoneLabel: z.label, rect: z, color: src.pickleball.color, area: src.pickleball.area, surface: src.pickleball.surface, packed: true }));
             return;
           }
         }
@@ -24737,11 +24774,16 @@
         return { x: z.x + i, y: z.y + i, w: z.l - 2 * i, h: z.w - 2 * i };
       });
     }
-    const rects = layout.zones.map((z) => {
-      const all = layout.courts.filter((c) => c.zone === z.key);
-      const mine = !layout.split && layout.mainId ? all.filter((c) => c.sport === layout.mainId || c.converted && layout.mainId === "tennis") : all;
-      return mine.length ? mine : all;
-    }).filter((cs) => cs.length).map((cs) => {
+    const rects = layout.zones.flatMap((z) => {
+      const pk = layout.courts.filter((c) => c.zone === z.key && c.packed);
+      if (pk.length) return pk.map((c) => [{ x: c.x0, y: c.y0, w: c.l, h: c.w, ...c.surface ? { fill: c.surface } : {} }]);
+      return [(() => {
+        const all = layout.courts.filter((c) => c.zone === z.key);
+        const mine = !layout.split && layout.mainId ? all.filter((c) => c.sport === layout.mainId || c.converted && layout.mainId === "tennis") : all;
+        return mine.length ? mine : all;
+      })()];
+    }).filter((cs) => cs.length && (cs[0].fill !== void 0 || cs[0].x0 !== void 0 || cs[0].x !== void 0)).map((cs) => {
+      if (cs[0].h !== void 0) return cs[0];
       const x0 = Math.min(...cs.map((c) => c.x0));
       const y0 = Math.min(...cs.map((c) => c.y0));
       return { x: x0, y: y0, w: Math.max(...cs.map((c) => c.x0 + c.l)) - x0, h: Math.max(...cs.map((c) => c.y0 + c.w)) - y0 };
@@ -24905,6 +24947,7 @@
           if (cp.length) o[id].copies = cp;
         }
         if (s && s.turn === 90) o[id].turn = 90;
+        if (s && id === "pickleball" && PB_COUNTS.includes(s.count) && s.count > 1) o[id].count = s.count;
         if (s && typeof s.area === "string" && HEX.test(s.area) && AREA_SHAPES[id]) o[id].area = s.area.toLowerCase();
         if (s && s.pad && typeof s.pad === "object" && PAD_SPORTS[id]) o[id].pad = { gap: numIn(s.pad.gap, 0, 100, PAD_SPORTS[id].gap), endGap: numIn(s.pad.endGap, 0, 200, PAD_SPORTS[id].endGap), cols: s.pad.cols === 2 ? 2 : 1 };
         if (s && typeof s.surface === "string" && HEX.test(s.surface)) o[id].surface = s.surface.toLowerCase();
@@ -26325,7 +26368,7 @@
       ] })
     ] });
   }
-  function DividerPanel({ divider, setDivider, dims, layout, tool, setTool, onCopyZone, onSwapZones, zoneSets, onZoneSport, north = 0 }) {
+  function DividerPanel({ divider, setDivider, dims, layout, tool, setTool, onCopyZone, onSwapZones, zoneSets, onZoneSport, onZoneCount, onSplitOn, onPreset, north = 0 }) {
     const patch = (c) => setDivider((d) => ({ ...d, ...c }));
     const span = dividerSpan(divider, dims);
     const pos = dividerPos(divider, dims);
@@ -26342,12 +26385,16 @@
             type: "checkbox",
             checked: divider.on,
             disabled: !canSplit,
-            onChange: (e) => patch({ on: e.target.checked }),
+            onChange: (e) => {
+              patch({ on: e.target.checked, pos: null });
+              if (e.target.checked && onSplitOn) onSplitOn();
+            },
             className: "h-4 w-4 accent-[#236e45]"
           }
         ),
         "Split the surface with a divider"
       ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", className: `${toolBtn} mb-2`, onClick: onPreset, "data-testid": "preset-pb4-tennis", children: "Set up 4 pickleball courts and a tennis court" }),
       !divider.on && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-slate-500", children: "Adds a fence or net that makes two zones. Each zone gets its own lines, for example two different sports on one slab." }),
       divider.on && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mb-3", children: [
@@ -26450,6 +26497,24 @@
                 );
               }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": !Object.values(src).some((v) => v.on), "aria-label": `${z.label} sport: none`, onClick: () => onZoneSport(key, null), className: chip(!Object.values(src).some((v) => v.on)), children: "None" })
+            ] }),
+            src.pickleball.on && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2", "data-zone-count": key, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "mb-1 text-xs font-semibold text-[#323c61]", children: [
+                "Pickleball courts in the ",
+                z.label.toLowerCase()
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-wrap gap-1", children: PB_COUNTS.map((n) => {
+                const cur = src.pickleball.count || 1;
+                return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": cur === n, "aria-label": `${z.label}: ${n} pickleball court${n > 1 ? "s" : ""}`, onClick: () => onZoneCount(key, n), className: chip(cur === n), children: n === 4 ? "4 (2 x 2)" : n }, n);
+              }) }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: "Choosing a number sizes this zone for the courts (a pad's usual edge and spacing) and moves the divider to the edge of the block. Then you can still drag the divider." }),
+              (src.pickleball.count || 1) > 1 && !packCount(z, src.pickleball.count) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "mt-1 text-xs text-amber-800", children: [
+                "These courts do not fit this zone yet: it needs ",
+                r1(packNeed(src.pickleball.count).x),
+                " x ",
+                r1(packNeed(src.pickleball.count).y),
+                " ft."
+              ] })
             ] }),
             LINE_SPORT_ENTRIES.filter(([id]) => src[id].on).map(([id, sp]) => {
               const pc = placeCourt(z, id, divider[field], true);
@@ -29866,6 +29931,11 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
     const [open, setOpen] = (0, import_react.useState)(false);
     const [sportId, setSportId] = (0, import_react.useState)("tennis");
     const [dims, setDims] = (0, import_react.useState)(SPORTS.tennis.overall);
+    const growForZones = () => {
+      const o = SPORTS[sportId] && SPORTS[sportId].overall;
+      if (!o || sportId !== "pickleball") return;
+      setDims((d) => d.w >= 2 * o.w - 0.01 ? d : { l: Math.max(d.l, o.l), w: 2 * o.w });
+    };
     const [lock, setLock] = (0, import_react.useState)(false);
     const [base, setBase] = (0, import_react.useState)("concrete");
     const [main, setMain] = (0, import_react.useState)("#0f3461");
@@ -29960,6 +30030,27 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
         { id: otherId, zone: zoneOf(otherKey), turn: otherId && EW_SPORTS.includes(otherId) ? ewTurn(north) : otherTurn }
       ].filter((c) => c.id && c.zone);
       setPlaced(rebuildAuto(choices, placed));
+    };
+    const presetPbTennis = () => {
+      const only = (set, id, extra) => Object.fromEntries(Object.entries(set).map(([sid, v]) => [sid, { ...v, on: sid === id, ...sid === id ? extra : {} }]));
+      setZoneSets((z) => ({ A: only(z.A, "pickleball", { count: 4 }), B: only(z.B, "tennis", {}) }));
+      setDims({ l: 120, w: 120 });
+      setDivider((d) => ({ ...d, on: true, orient: "across", pos: 60, turnA: "auto", turnB: "auto" }));
+      setFixedOn((f) => ({ ...f, pickleNet: true, tennisNet: true }));
+    };
+    const setZoneCount = (key, n) => {
+      setZoneSets((z) => ({ ...z, [key]: { ...z[key], pickleball: { ...z[key].pickleball, count: n > 1 ? n : void 0 } } }));
+      const need = packNeed(n, 90);
+      const across = divider.orient === "across";
+      const zi = key === "A" ? 0 : 1;
+      const mine = layout.zones[zi];
+      const other = layout.zones[1 - zi];
+      const size = across ? need.x : need.y;
+      const otherSize = across ? other.l : other.w;
+      const span = size + otherSize;
+      const pos = key === "A" ? size : otherSize;
+      setDims((d) => across ? { l: r1(span), w: r1(Math.max(d.w, need.y)) } : { w: r1(span), l: r1(Math.max(d.l, need.x)) });
+      setDivider((d) => ({ ...d, pos: r1(pos) }));
     };
     const changeNorth = (n) => {
       const was = ewTurn(north);
@@ -30662,7 +30753,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
                     ] }),
                     PAD_SPORTS[sportId] && !divider.on && !convert && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CourtPadPanel, { sportId, layout, sets, onSet: setCourtPad }),
                     (convert || layout.all.some((c) => c.sport === "tennis")) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "border-t border-slate-200 pt-5", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ConvertPanel, { convert, onToggle: toggleConvert, layout, dims, setDims }) }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "border-t border-slate-200 pt-5", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DividerPanel, { divider, setDivider, dims, layout, tool, setTool, onCopyZone: copyZone, onSwapZones: swapZones, zoneSets, onZoneSport: setZoneSport, north }) }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "border-t border-slate-200 pt-5", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DividerPanel, { divider, setDivider, dims, layout, tool, setTool, onCopyZone: copyZone, onSwapZones: swapZones, zoneSets, onZoneSport: setZoneSport, onZoneCount: setZoneCount, onPreset: presetPbTennis, onSplitOn: growForZones, north }) }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "border-t border-slate-200 pt-5", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DirectionPanel, { layout, north, setNorth: changeNorth }) })
                   ] }) }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Fold, { id: "base", title: "Foundation", summary: BASES[base].name, open: !!folds.base, onToggle: toggleFold, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "[&_legend]:sr-only", children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mb-8", children: [
