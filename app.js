@@ -23996,7 +23996,7 @@
   var MIN_ZONE = 10;
   var DEFAULT_DIVIDER = { on: false, kind: "fence", height: 6, orient: "across", pos: null, turnA: "auto", turnB: "auto" };
   var FENCE_HEIGHTS = [6, 8, 10, 12];
-  var DIVIDER_HEIGHTS = FENCE_HEIGHTS;
+  var DIVIDER_HEIGHTS = [4, ...FENCE_HEIGHTS];
   var PERMIT_HEIGHT = 10;
   var PERMIT_NOTE = "A fence this tall requires a permit. Check with your city before installation.";
   var permitText = (fence, divider) => [
@@ -24013,6 +24013,13 @@
   var dividerPos = (d, dims) => {
     const span = dividerSpan(d, dims);
     return clamp(r1(d.pos == null ? span / 2 : d.pos), MIN_ZONE, span - MIN_ZONE);
+  };
+  var polesEven = (n, run) => Array.from({ length: n }, (_, i) => r1((i + 1) * run / (n + 1)));
+  var dividerPoles = (d, dims) => {
+    if (!d || !d.on || !Array.isArray(d.poles)) return [];
+    const run = dividerRun(d, dims);
+    const pos = dividerPos(d, dims);
+    return d.poles.filter((t) => t >= 0 && t <= run).map((t) => d.orient === "across" ? { t, x: pos, y: t } : { t, x: t, y: pos });
   };
   var zoneRects = (d, dims) => {
     if (!d.on) return [{ key: "all", label: "Whole surface", x: 0, y: 0, l: dims.l, w: dims.w }];
@@ -24820,6 +24827,7 @@
       lineTotal: lines.reduce((s, l) => s + l.ft, 0),
       fence: fence.on ? { height: fence.height, perimeter: run.perimeter, gateOpenings: run.gates, divider: run.divider, total: run.total } : null,
       dividerNet: divider.on && divider.kind === "net" ? r1(dividerRun(divider, dims)) : 0,
+      dividerPoles: dividerPoles(divider, dims).length,
       gates: live.length,
       gateTypes: Object.entries(widths).map(([k, n]) => {
         const [w, leaf] = k.split("|");
@@ -24859,6 +24867,7 @@
       ]);
     }
     if (q.dividerNet) rows.push(["Divider net", `${q.dividerNet} ft`]);
+    if (q.dividerPoles) rows.push(["Light poles on the divider", `${q.dividerPoles}`]);
     q.gateTypes.forEach((g) => rows.push([`Gates, ${g.width} ft ${g.leaf}`, `${g.count}`]));
     if (q.goals) rows.push(["Basketball goals", `${q.goals}`]);
     if (q.futsalGoals) rows.push(["Futsal goals", `${q.futsalGoals}`]);
@@ -24968,7 +24977,8 @@
       orient: oneOf(dv.orient, ["across", "along"], "across"),
       pos: dv.pos == null ? null : numIn(dv.pos, 0, MAX, null),
       turnA: oneOf(dv.turnA, ["auto", "0", "90"], "auto"),
-      turnB: oneOf(dv.turnB, ["auto", "0", "90"], "auto")
+      turnB: oneOf(dv.turnB, ["auto", "0", "90"], "auto"),
+      ...Array.isArray(dv.poles) && dv.poles.length ? { poles: dv.poles.filter((t) => typeof t === "number" && isFinite(t) && t >= 0 && t <= MAX).slice(0, 12).sort((a, b) => a - b) } : {}
     };
     let maxUid = 0;
     const gates = (Array.isArray(p.gates) ? p.gates : []).slice(0, GATE_MAX).map((g, i) => {
@@ -25482,6 +25492,13 @@
                 const p = across ? { x: dv.pos, y: t } : { x: t, y: dv.pos };
                 return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: p.x, cy: p.y, r: isNet ? 0.5 : 0.65, fill: isNet ? "#e5e7eb" : "#5b6475", stroke: "#0f172a", strokeWidth: "0.15" }, t);
               }),
+              (dv.poles || []).map((t, i) => t >= 0 && t <= run ? [t, i] : null).filter(Boolean).map(([t, i]) => {
+                const c = across ? { x: dv.pos, y: t } : { x: t, y: dv.pos };
+                return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { "data-divider-pole": t, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: c.x, cy: c.y, r: 1.5, fill: "#e2e8f0", stroke: "#0f172a", strokeWidth: "0.25" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: `M${c.x - 0.9} ${c.y - 0.9}L${c.x + 0.9} ${c.y + 0.9}M${c.x + 0.9} ${c.y - 0.9}L${c.x - 0.9} ${c.y + 0.9}`, stroke: "#0f172a", strokeWidth: "0.35", strokeLinecap: "round" })
+                ] }, `lp${i}`);
+              }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 Tag,
                 {
@@ -25504,7 +25521,11 @@
                   onClick: (e) => e.stopPropagation(),
                   children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("title", { children: "Drag to move the divider" })
                 }
-              )
+              ),
+              edit && (dv.poles || []).map((t, i) => {
+                const c = across ? { x: dv.pos, y: t } : { x: t, y: dv.pos };
+                return t >= 0 && t <= run ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { "data-handle": `dpole-${i}`, cx: c.x, cy: c.y, r: 2.4, fill: "rgba(255,255,255,0.01)", pointerEvents: "all", style: { cursor: across ? "ns-resize" : "ew-resize", touchAction: "none" }, onPointerDown: grab("dpole", i), onClick: (e) => e.stopPropagation(), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("title", { children: "Drag to move this light pole along the fence" }) }, `dph${i}`) : null;
+              })
             ] });
           })(),
           layout.split && !overlay && layout.zones.map((z) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { x: z.x + z.l / 2, y: z.y + 3.4, text: zoneText(z), size: 2 * k }, z.key)),
@@ -26397,6 +26418,25 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", className: `${toolBtn} mb-2`, onClick: onPreset, "data-testid": "preset-pb4-tennis", children: "Set up 4 pickleball courts and a tennis court" }),
       !divider.on && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-slate-500", children: "Adds a fence or net that makes two zones. Each zone gets its own lines, for example two different sports on one slab." }),
       divider.on && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mb-3", "data-divider-poles": true, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: "Light poles on the divider" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-wrap gap-1", children: [0, 2, 3, 4, 5, 6].map((n) => {
+            const cur = (divider.poles || []).length;
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", "aria-pressed": cur === n, "aria-label": n ? `${n} light poles on the divider` : "No light poles on the divider", onClick: () => patch({ poles: n ? polesEven(n, dividerRun(divider, dims)) : void 0 }), className: chip(cur === n), children: n === 0 ? "None" : n }, n);
+          }) }),
+          (divider.poles || []).length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "mt-1 text-xs text-slate-500", children: [
+              "The fence runs along the line between the poles. Type each pole's distance from the ",
+              divider.orient === "across" ? "top" : "left",
+              " end. The gaps below add up to the fence length."
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-1 flex flex-wrap gap-2", children: divider.poles.map((t, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumField, { label: `Light pole ${i + 1} (ft from the ${divider.orient === "across" ? "top" : "left"})`, value: r1(t), min: 0, max: r1(dividerRun(divider, dims)), step: 0.5, onCommit: (v) => patch({ poles: divider.poles.map((q, j) => j === i ? v : q).sort((a, b) => a - b) }) }, i)) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { className: "mt-1 text-xs text-slate-500", children: [
+              "Gaps: ",
+              [divider.poles[0], ...divider.poles.slice(1).map((t, i) => t - divider.poles[i]), dividerRun(divider, dims) - divider.poles[divider.poles.length - 1]].map((g) => fmtLen(g)).join(", ")
+            ] })
+          ] })
+        ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mb-3", children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: "Divider type" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex rounded-md border border-slate-300 p-0.5", children: [["fence", "Fence"], ["net", "Net"]].map(([k, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -27030,7 +27070,8 @@
         kind: divider.kind,
         height: divider.kind === "fence" ? divider.height : null,
         direction: divider.orient === "across" ? "Left and right zones" : "Top and bottom zones",
-        positionFt: dividerPos(divider, dims)
+        positionFt: dividerPos(divider, dims),
+        polesFt: dividerPoles(divider, dims).map((q) => r1(q.t))
       } : null,
       north: NORTH_OPTIONS.find((o) => o[0] === north)[1].toLowerCase(),
       lines: groupCourts(layout.courts).map((c) => ({
@@ -28585,6 +28626,21 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
       } else {
         run(a[0], a[1], a[2], a[3], dv.height, null, 10);
       }
+      (dv.poles || []).forEach((t) => {
+        const x = dv.orient === "across" ? dv.pos : t;
+        const z = dv.orient === "across" ? t : dv.pos;
+        if (t < 0 || t > (dv.orient === "across" ? Wd : L)) return;
+        const grey = rgba("#9aa3ad");
+        B.cyl(x, z, 0, 25, 0.46, 0.26, grey, { seg: 10 });
+        const ac = dv.orient === "across";
+        B.box(x, z, 24.45, ac ? 7 : 0.22, ac ? 0.22 : 7, 0.22, 0, grey, { cast: false });
+        [-3, 3].forEach((s) => {
+          const hx = ac ? x + s : x;
+          const hz = ac ? z : z + s;
+          B.box(hx, hz, 24.2, ac ? 1.6 : 2.6, ac ? 2.6 : 1.6, 0.5, 0, rgba("#3a3f47"), { cast: false });
+          B.box(hx, hz, 24.15, ac ? 1.3 : 2.3, ac ? 2.3 : 1.3, 0.06, 0, rgba("#fff3c4"), { group: "glow", cast: false });
+        });
+      });
     }
     (nets || []).forEach((n) => {
       const spec = NET_3D[n.id] || NET_3D.tennisNet;
@@ -30322,7 +30378,17 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
         setTool(null);
       },
       onDrag: (kind, id, pt) => {
-        if (kind === "divider") {
+        if (kind === "dpole") {
+          const run = dividerRun(divider, dims);
+          const list = divider.poles || [];
+          const raw = divider.orient === "across" ? pt.y : pt.x;
+          const r = snapVal(raw, snap, [[0, "the end of the fence"], [run, "the other end of the fence"], [run / 2, "the middle of the fence"]]);
+          const lo = id > 0 ? list[id - 1] : 0;
+          const hi = id < list.length - 1 ? list[id + 1] : run;
+          const t = r1(clamp(r.v, lo, hi));
+          setDivider((d) => ({ ...d, poles: (d.poles || []).map((q, j) => j === id ? t : q) }));
+          note(r.why);
+        } else if (kind === "divider") {
           const r = dividerSnap(divider, pt, dims, snap);
           setDivider((d) => ({ ...d, pos: r.pos }));
           note(r.why);
