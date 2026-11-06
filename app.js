@@ -25520,9 +25520,10 @@
             for (let t = 0; t <= run + 0.01; t += 10) posts.push(t);
             if (run % 10) posts.push(run);
             const isNet = dv.kind === "net";
+            const hasSecs = dividerSections(dv, dims).length > 0;
             return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { "data-divider": "true", children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { ...a, stroke: isNet ? "#0f172a" : "#8b94a3", strokeWidth: isNet ? 0.35 : 0.6, strokeDasharray: isNet ? "0.5 0.35" : "1.2 0.6" }),
-              posts.map((t) => {
+              !hasSecs && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { ...a, stroke: isNet ? "#0f172a" : "#8b94a3", strokeWidth: isNet ? 0.35 : 0.6, strokeDasharray: isNet ? "0.5 0.35" : "1.2 0.6" }),
+              !hasSecs && posts.map((t) => {
                 const p = across ? { x: dv.pos, y: t } : { x: t, y: dv.pos };
                 return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: p.x, cy: p.y, r: isNet ? 0.5 : 0.65, fill: isNet ? "#e5e7eb" : "#5b6475", stroke: "#0f172a", strokeWidth: "0.15" }, t);
               }),
@@ -25532,7 +25533,11 @@
                 const mid = across ? { x: dv.pos - 4.5, y: (q.t0 + q.t1) / 2 } : { x: (q.t0 + q.t1) / 2, y: dv.pos - 4.5 };
                 return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { "data-divider-section": q.name, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: e0.x, y1: e0.y, x2: e1.x, y2: e1.y, stroke: q.fits ? "#111827" : "#b91c1c", strokeWidth: "0.9", strokeLinecap: "butt" }),
-                  !dv.noLabel && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { x: mid.x, y: mid.y, text: `${q.name}  ${fmtLen(q.len)}`, size: 1.7 * k })
+                  !dv.noLabel && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: mid.x, cy: mid.y, r: 1.9 * k, fill: "#ffffff", stroke: "#b91c1c", strokeWidth: 0.28 * k }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", { x: mid.x, y: mid.y + 0.7 * k, textAnchor: "middle", fontSize: 2.1 * k, fontWeight: "700", fill: "#b91c1c", fontFamily: "sans-serif", children: q.name }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("text", { x: mid.x, y: mid.y + 4.6 * k, textAnchor: "middle", fontSize: 1.9 * k, fontWeight: "700", fill: "#b91c1c", fontFamily: "sans-serif", stroke: "#ffffff", strokeWidth: 0.5 * k, paintOrder: "stroke", children: fmtLen(q.len) })
+                  ] })
                 ] }, `sec${q.i}`);
               }),
               (dv.poles || []).map((t, i) => t >= 0 && t <= run ? [t, i] : null).filter(Boolean).map(([t, i]) => {
@@ -25542,7 +25547,7 @@
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: `M${c.x - 0.9} ${c.y - 0.9}L${c.x + 0.9} ${c.y + 0.9}M${c.x + 0.9} ${c.y - 0.9}L${c.x - 0.9} ${c.y + 0.9}`, stroke: "#0f172a", strokeWidth: "0.35", strokeLinecap: "round" })
                 ] }, `lp${i}`);
               }),
-              !dv.noLabel && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              !dv.noLabel && !hasSecs && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 Tag,
                 {
                   x: across ? dv.pos : dims.l * 0.25,
@@ -26468,11 +26473,11 @@
         divider.kind === "fence" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mb-3", "data-divider-sections": true, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: "Fence in sections" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2 text-sm text-slate-700", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!(divider.sections && divider.sections.length), onChange: (e) => patch(e.target.checked ? { black: true, poles: divider.poles && divider.poles.length ? divider.poles : [r1(dividerRun(divider, dims) * 0.215), r1(dividerRun(divider, dims) * 0.84)], sections: [{ name: "A", len: 18, span: 0, flush: true }, { name: "B", len: 24, span: 1 }, { name: "C", len: 24, span: 1 }, { name: "D", len: 10, span: 2 }] } : { sections: void 0 }), className: "h-4 w-4 accent-[#236e45]" }),
-            "Run the divider as separate sections with openings (starts with A, B, C, D)"
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!(divider.sections && divider.sections.length), onChange: (e) => patch(e.target.checked ? { black: true, poles: [23.5, 57.67, 91.83].filter((t) => t < dividerRun(divider, dims)), sections: [{ name: "A", len: 18, span: 0, flush: true }, { name: "B", len: 24, span: 1 }, { name: "C", len: 24, span: 2 }, { name: "D", len: 10, span: 3 }] } : { sections: void 0 }), className: "h-4 w-4 accent-[#236e45]" }),
+            "Run the divider as separate sections, one between each pair of light poles (A, B, C, D)"
           ] }),
           divider.sections && divider.sections.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: 'Sections in the same span are spaced so every opening is equal. A section marked "flush" starts right at the end of its span, like A against the north fence.' }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: 'The divider ties into the perimeter fence at the north end, so turn the perimeter fence on. Sections in the same span are spaced so every opening is equal. A section marked "flush" starts right at the end of its span, like A against the north fence.' }),
             divider.sections.map((q, i) => {
               const stops = (divider.poles || []).length + 1;
               const names = ["North end", ...(divider.poles || []).map((_, j) => `pole ${j + 1}`), "south end"];
@@ -27155,7 +27160,8 @@
         direction: divider.orient === "across" ? "Left and right zones" : "Top and bottom zones",
         positionFt: dividerPos(divider, dims),
         polesFt: dividerPoles(divider, dims).map((q) => r1(q.t)),
-        sections: dividerSections(divider, dims).map((q) => `${q.name} ${r1(q.len)} ft`)
+        sections: dividerSections(divider, dims).map((q) => `${q.name} ${r1(q.len)} ft`),
+        finish: divider.black ? "Black, surface-mounted chain link" : null
       } : null,
       north: NORTH_OPTIONS.find((o) => o[0] === north)[1].toLowerCase(),
       lines: groupCourts(layout.courts).map((c) => ({
@@ -28714,7 +28720,11 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
         dividerSections(dv, { l: L, w: Wd }).forEach((q) => {
           const x1 = k ? dv.pos : q.t0, z1 = k ? q.t0 : dv.pos, x2 = k ? dv.pos : q.t1, z2 = k ? q.t1 : dv.pos;
           const n = Math.max(1, Math.ceil(q.len / 10));
-          for (let i = 0; i <= n; i++) B.cyl(x1 + (x2 - x1) * i / n, z1 + (z2 - z1) * i / n, 0, dv.height, 0.13, 0.13, bp, { seg: 8 });
+          for (let i = 0; i <= n; i++) {
+            const px = x1 + (x2 - x1) * i / n, pz = z1 + (z2 - z1) * i / n;
+            B.cyl(px, pz, 0, dv.height, 0.13, 0.13, bp, { seg: 8 });
+            B.box(px, pz, 0, 0.9, 0.9, 0.08, 0, bp, { cast: false });
+          }
           B.panel(x1, z1, x2, z2, 0.2, dv.height, bm);
           B.bar(x1, z1, x2, z2, dv.height, 0.2, bp, { cast: false });
         });
@@ -30188,6 +30198,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
       setDims({ l: 120, w: 120 });
       setDivider((d) => ({ ...d, on: true, orient: "across", pos: 60, turnA: "auto", turnB: "auto" }));
       setFixedOn((f) => ({ ...f, pickleNet: true, tennisNet: true }));
+      setFence((f) => ({ ...f, on: true }));
     };
     const setZoneCount = (key, n) => {
       setZoneSets((z) => ({ ...z, [key]: { ...z[key], pickleball: { ...z[key].pickleball, count: n > 1 ? n : void 0 } } }));
