@@ -24978,6 +24978,7 @@
       pos: dv.pos == null ? null : numIn(dv.pos, 0, MAX, null),
       turnA: oneOf(dv.turnA, ["auto", "0", "90"], "auto"),
       turnB: oneOf(dv.turnB, ["auto", "0", "90"], "auto"),
+      ...dv.noLabel === true ? { noLabel: true } : {},
       ...Array.isArray(dv.poles) && dv.poles.length ? { poles: dv.poles.filter((t) => typeof t === "number" && isFinite(t) && t >= 0 && t <= MAX).slice(0, 12).sort((a, b) => a - b) } : {}
     };
     let maxUid = 0;
@@ -25499,7 +25500,7 @@
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("path", { d: `M${c.x - 0.9} ${c.y - 0.9}L${c.x + 0.9} ${c.y + 0.9}M${c.x + 0.9} ${c.y - 0.9}L${c.x - 0.9} ${c.y + 0.9}`, stroke: "#0f172a", strokeWidth: "0.35", strokeLinecap: "round" })
                 ] }, `lp${i}`);
               }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              !dv.noLabel && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 Tag,
                 {
                   x: across ? dv.pos : dims.l * 0.25,
@@ -26418,6 +26419,10 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", className: `${toolBtn} mb-2`, onClick: onPreset, "data-testid": "preset-pb4-tennis", children: "Set up 4 pickleball courts and a tennis court" }),
       !divider.on && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "text-xs text-slate-500", children: "Adds a fence or net that makes two zones. Each zone gets its own lines, for example two different sports on one slab." }),
       divider.on && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "mb-3 flex items-center gap-2 text-sm text-slate-700", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !divider.noLabel, onChange: (e) => patch({ noLabel: e.target.checked ? void 0 : true }), className: "h-4 w-4 accent-[#236e45]" }),
+          'Show the fence label on the drawing (for example "4 ft divider fence")'
+        ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mb-3", "data-divider-poles": true, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: "Light poles on the divider" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-wrap gap-1", children: [0, 2, 3, 4, 5, 6].map((n) => {
