@@ -24464,6 +24464,44 @@
     return { edge, along: al.v, out: Math.max(0, ou.v), why: al.why || ou.why };
   };
   var FENCE_OFF = 0;
+  var padCuts = (dims) => {
+    const c = dims && dims.cut;
+    if (!Array.isArray(c)) return [0, 0, 0, 0];
+    const m = Math.max(0, Math.min(dims.l, dims.w) / 2 - 0.5);
+    return [0, 1, 2, 3].map((i) => Math.min(m, Math.max(0, Number(c[i]) || 0)));
+  };
+  var hasCuts = (dims) => padCuts(dims).some((v) => v > 0);
+  var padPoints = (dims) => {
+    const [a, b, c, d] = padCuts(dims);
+    const { l, w } = dims;
+    const raw = [[a, 0], [l - b, 0], [l, b], [l, w - c], [l - c, w], [d, w], [0, w - d], [0, a]];
+    return raw.filter((q, i) => {
+      const n = raw[(i + 1) % raw.length];
+      return Math.abs(q[0] - n[0]) > 1e-9 || Math.abs(q[1] - n[1]) > 1e-9;
+    });
+  };
+  var padArea = (dims) => {
+    const pts = padPoints(dims);
+    let a = 0;
+    pts.forEach((q, i) => {
+      const n = pts[(i + 1) % pts.length];
+      a += q[0] * n[1] - n[0] * q[1];
+    });
+    return Math.abs(a) / 2;
+  };
+  var padPerimeter = (dims) => padPoints(dims).reduce((s, q, i, pts) => {
+    const n = pts[(i + 1) % pts.length];
+    return s + Math.hypot(n[0] - q[0], n[1] - q[1]);
+  }, 0);
+  var sideCuts = (side, dims) => {
+    const [a, b, c, d] = padCuts(dims);
+    return { north: [a, b], east: [b, c], south: [d, c], west: [a, d] }[side];
+  };
+  var rectInCut = (dims, r) => {
+    const [a, b, c, d] = padCuts(dims);
+    const { l, w } = dims;
+    return [[r.x, r.y], [r.x + r.w, r.y], [r.x + r.w, r.y + r.h], [r.x, r.y + r.h]].some(([x, y]) => a && x + y < a - 1e-6 || b && l - x + y < b - 1e-6 || c && l - x + w - y < c - 1e-6 || d && x + w - y < d - 1e-6);
+  };
   var GATE_WIDTHS = [3, 4, 5, 6, 8, 10, 12];
   var GATE_MAX = 6;
   var GATE_ACCESS = [
@@ -24494,7 +24532,8 @@
   var resolveGate = (g, dims) => {
     const len = sideLen(g.side, dims);
     const half = Math.min(g.width, len) / 2;
-    return { ...g, len, along: clamp(g.along, half, len - half) };
+    const [s0, e0] = sideCuts(g.side, dims);
+    return { ...g, len, along: clamp(g.along, s0 + half, Math.max(s0 + half, len - e0 - half)) };
   };
   function gateGeom(g, dims) {
     const { l, w } = dims;
@@ -24540,8 +24579,15 @@
       east: { lo: -o, hi: w + o, pt: (t) => ({ x: l + o, y: t }) }
     };
     const out = [];
+    const [ca, cb, cc, cd] = padCuts(dims);
+    [{ x1: 0, y1: ca, x2: ca, y2: 0 }, { x1: l - cb, y1: 0, x2: l, y2: cb }, { x1: l, y1: w - cc, x2: l - cc, y2: w }, { x1: cd, y1: w, x2: 0, y2: w - cd }].forEach((seg, i) => {
+      if ([ca, cb, cc, cd][i]) out.push({ ...seg, diag: true });
+    });
     SIDES.forEach((side) => {
-      const S = sides[side];
+      const S = { ...sides[side] };
+      const [s0, e0] = sideCuts(side, dims);
+      S.lo = s0 || S.lo;
+      S.hi = (side === "north" || side === "south" ? l : w) - (e0 || -o);
       const cuts = gates.filter((g) => g.side === side).map((g) => [g.along - g.width / 2, g.along + g.width / 2]);
       subtractCuts(S.lo, S.hi, cuts).forEach(([a, b]) => {
         const p = S.pt(a), q = S.pt(b);
@@ -24561,7 +24607,7 @@
     return Math.ceil(Math.max(8, FENCE_OFF + out + 2));
   };
   function fenceLengths(dims, fence, gates, divider) {
-    const perimeter = fence.on ? r1(2 * (dims.l + dims.w)) : 0;
+    const perimeter = fence.on ? r1(hasCuts(dims) ? padPerimeter(dims) : 2 * (dims.l + dims.w)) : 0;
     const gateFt = fence.on ? r1(gates.reduce((s, g) => s + g.width, 0)) : 0;
     const secs = dividerSections(divider, dims);
     const div = divider && divider.on && divider.kind === "fence" ? r1(secs.length ? secs.reduce((a, q) => a + q.len, 0) : dividerRun(divider, dims)) : 0;
@@ -24668,7 +24714,7 @@
         const shift = (k2 - (n - 1) / 2) * 3;
         const scaled = (c.scale || 1) < 0.999;
         const as = unver && (!SPORTS[c.sport].confirmed || scaled);
-        const nm = SPORTS[c.sport].name.replace(" (half court)", " half") + (c.converted ? ` ${k2 + 1}` : "") + (c.twin ? " mirrored" : "") + (c.copy ? ` ${c.copy + 1}` : "") + (scaled ? " scaled" : "");
+        const nm = SPORTS[c.sport].name.replace(" (half court)", " half") + (c.converted || c.packed ? ` ${k2 + 1}` : "") + (c.twin ? " mirrored" : "") + (c.copy ? ` ${c.copy + 1}` : "") + (scaled ? " scaled" : "");
         const zn = layout.split ? `${c.zoneLabel} ` : "";
         if (!c.converted && !c.twin && c.x0 - c.rect.x > 0.4) D("courts", `${c.key}-mx`, `${zn}${nm}: edge margin to court (sides)`, { x: c.rect.x, y: c.cy + shift }, { x: c.x0, y: c.cy + shift }, null, c.x0 - c.rect.x, as);
         if (!c.converted && !c.twin && c.y0 - c.rect.y > 0.4) D("courts", `${c.key}-my`, `${zn}${nm}: edge margin to court (ends)`, { x: c.cx + shift, y: c.rect.y }, { x: c.cx + shift, y: c.y0 }, null, c.y0 - c.rect.y, as);
@@ -24736,7 +24782,7 @@
     if (L.fence && fence.on) {
       fenceSegments(dims, gates).forEach((s, i) => {
         const len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1);
-        if (len < 3) return;
+        if (len < 3 || s.diag) return;
         const horiz = s.y1 === s.y2;
         const top = horiz ? s.y1 < dims.w / 2 : s.x1 < dims.l / 2;
         const side = horiz ? top ? "Top" : "Bottom" : top ? "Left" : "Right";
@@ -24830,7 +24876,7 @@
   };
   var LINE_FT = { tennis: 516, pickleball: 218, basketball: 752.9, basketballHalf: 401.5, futsal: 665.1, volleyball: 265.5 };
   function computeQuantities({ dims, layout, fence, gates, divider, flexPlaced, nets, fallback }) {
-    const total = dims.l * dims.w;
+    const total = padArea(dims);
     const main = mainRects(layout, dims, fallback).reduce((s, m) => s + m.w * m.h, 0);
     const lineMap = {};
     layout.courts.forEach((c) => {
@@ -24946,6 +24992,7 @@
     const sportId = oneOf(p.sportId, Object.keys(SPORTS), "tennis");
     const dflt = SPORTS[sportId].overall;
     const dims = { l: r1(numIn(p.dims && p.dims.l, 10, MAX, dflt.l)), w: r1(numIn(p.dims && p.dims.w, 10, MAX, dflt.w)) };
+    if (p.dims && Array.isArray(p.dims.cut) && p.dims.cut.some((v) => Number(v) > 0)) dims.cut = [0, 1, 2, 3].map((i) => r1(numIn(p.dims.cut[i], 0, 200, 0)));
     const cleanCopy = (s, id) => {
       const c = {};
       if (typeof s.scale === "number") c.scale = numIn(s.scale, MIN_SCALE, 1, 1);
@@ -25372,6 +25419,8 @@
     const items = mOn ? buildMeasures({ dims, layout, gates: liveGates, flexPlaced, nets, fence, meas, padBase: pad, k, north }) : [];
     const f = (v) => fmtLen(v, meas ? meas.unit : "ft");
     const vb = { x: -(pad + mp.l), y: -(pad + mp.t), w: dims.l + 2 * pad + mp.l + mp.r, h: dims.w + 2 * pad + mp.t + mp.b };
+    const cutOn = hasCuts(dims);
+    const cutPts = cutOn ? padPoints(dims).map((q) => q.join(",")).join(" ") : "";
     (0, import_react.useEffect)(() => {
       const el = svgRef.current;
       if (!el) return void 0;
@@ -25463,29 +25512,34 @@
         onPointerCancel: release,
         onClick: click,
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("defs", { children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("linearGradient", { id: sheenId, x1: "0", y1: "0", x2: "1", y2: "1", children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("stop", { offset: "0", stopColor: "#fff", stopOpacity: SHEEN }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("stop", { offset: "0.5", stopColor: "#fff", stopOpacity: "0" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("stop", { offset: "1", stopColor: "#fff", stopOpacity: SHEEN / 2 })
-          ] }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("defs", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("linearGradient", { id: sheenId, x1: "0", y1: "0", x2: "1", y2: "1", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("stop", { offset: "0", stopColor: "#fff", stopOpacity: SHEEN }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("stop", { offset: "0.5", stopColor: "#fff", stopOpacity: "0" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("stop", { offset: "1", stopColor: "#fff", stopOpacity: SHEEN / 2 })
+            ] }),
+            cutOn && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("clipPath", { id: `${sheenId}-cut`, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("polygon", { points: cutPts }) })
+          ] }),
           !overlay && !(meas && meas.bare) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: vb.x, y: vb.y, width: vb.w, height: vb.h, fill: "#e3e8ee" }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { width: dims.l, height: dims.w, fill: border }),
-          bball && bball.outer && layout.zones.filter((z) => courts.some((c) => c.zone === z.key && BBALL_SPORTS.includes(c.sport))).map((z) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { "data-bball": "outer", x: z.x, y: z.y, width: z.l, height: z.w, fill: bball.outer }, `o${z.key}`)),
-          mains.map((m, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: m.x, y: m.y, width: m.w, height: m.h, fill: m.fill || main }, i)),
-          bball && courts.filter((c) => BBALL_SPORTS.includes(c.sport)).map((c) => {
-            const t = courtTransform(c);
-            return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-bball-areas": c.key, transform: t, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketAreas, { half: c.sport === "basketballHalf", bball, rules: c.rules }) }, `b${c.key}`);
-          }),
-          courts.filter((c) => c.area && AREA_SHAPES[c.sport]).map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-area": c.key, transform: courtTransform(c), stroke: "none", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { ...AREA_SHAPES[c.sport], fill: c.area }) }, `a${c.key}`)),
-          courts.map((c) => {
-            const Markings = MARKINGS[c.sport];
-            const sc = c.scale || 1;
-            const sl = c.sl || sc;
-            const sw2 = c.sw || sc;
-            const t = courtTransform(c);
-            return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-court": c.key, transform: t, fill: "none", stroke: c.color, strokeWidth: 0.33 / Math.sqrt(sl * sw2), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Markings, { noMid: c.noMid, noSides: c.noSides, rules: c.rules }) }, c.key);
-          }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { width: dims.l, height: dims.w, fill: `url(#${sheenId})`, pointerEvents: "none" }),
+          cutOn ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("polygon", { points: cutPts, fill: border }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { width: dims.l, height: dims.w, fill: border }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { clipPath: cutOn ? `url(#${sheenId}-cut)` : void 0, children: [
+            bball && bball.outer && layout.zones.filter((z) => courts.some((c) => c.zone === z.key && BBALL_SPORTS.includes(c.sport))).map((z) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { "data-bball": "outer", x: z.x, y: z.y, width: z.l, height: z.w, fill: bball.outer }, `o${z.key}`)),
+            mains.map((m, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { x: m.x, y: m.y, width: m.w, height: m.h, fill: m.fill || main }, i)),
+            bball && courts.filter((c) => BBALL_SPORTS.includes(c.sport)).map((c) => {
+              const t = courtTransform(c);
+              return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-bball-areas": c.key, transform: t, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BasketAreas, { half: c.sport === "basketballHalf", bball, rules: c.rules }) }, `b${c.key}`);
+            }),
+            courts.filter((c) => c.area && AREA_SHAPES[c.sport]).map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-area": c.key, transform: courtTransform(c), stroke: "none", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { ...AREA_SHAPES[c.sport], fill: c.area }) }, `a${c.key}`)),
+            courts.map((c) => {
+              const Markings = MARKINGS[c.sport];
+              const sc = c.scale || 1;
+              const sl = c.sl || sc;
+              const sw2 = c.sw || sc;
+              const t = courtTransform(c);
+              return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("g", { "data-court": c.key, transform: t, fill: "none", stroke: c.color, strokeWidth: 0.33 / Math.sqrt(sl * sw2), children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Markings, { noMid: c.noMid, noSides: c.noSides, rules: c.rules }) }, c.key);
+            })
+          ] }),
+          cutOn ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("polygon", { points: cutPts, fill: `url(#${sheenId})`, pointerEvents: "none" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("rect", { width: dims.l, height: dims.w, fill: `url(#${sheenId})`, pointerEvents: "none" }),
           edit && !overlay && (() => {
             const list = courts.filter((c) => !c.twin && !c.converted && c.zone === "all" && (c.turn === 90 ? dims.l - c.l : dims.w - c.w) > 0.5);
             return list.map((c, i) => {
@@ -25637,8 +25691,8 @@
             ] }, p.uid);
           }),
           fence.on && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { fill: "none", children: [
-            screenHex && segs.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { ...s, stroke: screenHex, strokeWidth: "1", opacity: "0.95" }, `w${i}`)),
-            segs.map((s, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { ...s, stroke: permitPerimeter ? "#b45309" : "#8b94a3", strokeWidth: permitPerimeter ? 0.5 : 0.35, strokeDasharray: "1.2 0.6" }, `f${i}`)),
+            screenHex && segs.map(({ diag, ...s }, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { ...s, stroke: screenHex, strokeWidth: "1", opacity: "0.95" }, `w${i}`)),
+            segs.map(({ diag, ...s }, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { ...s, stroke: permitPerimeter ? "#b45309" : "#8b94a3", strokeWidth: permitPerimeter ? 0.5 : 0.35, strokeDasharray: "1.2 0.6" }, `f${i}`)),
             [[-FENCE_OFF, -FENCE_OFF], [dims.l + FENCE_OFF, -FENCE_OFF], [-FENCE_OFF, dims.w + FENCE_OFF], [dims.l + FENCE_OFF, dims.w + FENCE_OFF]].map(([x, y]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: x, cy: y, r: "0.7", fill: "#5b6475" }, `${x}-${y}`))
           ] }),
           !overlay && !(meas && meas.layers && meas.layers.compass === false) && (() => {
@@ -26437,6 +26491,35 @@
       ] })
     ] });
   }
+  function CutCornersPanel({ padCut, setPadCut, dims, conflict }) {
+    const patch = (o) => setPadCut((c) => ({ ...c, ...o }));
+    const names = ["Northwest", "Northeast", "Southeast", "Southwest"];
+    const maxCut = Math.floor(Math.min(dims.l, dims.w) / 2 - 1);
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mt-4 border-t border-slate-200 pt-4", "data-cut-corners": true, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: "Cut corners" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2 text-sm text-slate-700", children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: padCut.on, onChange: (e) => patch({ on: e.target.checked }), className: "h-4 w-4 accent-[#236e45]" }),
+        "Cut the corners of the surface (an eight-sided pad)"
+      ] }),
+      padCut.on && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: "Each cut is measured back along both sides from the corner. The coating and the perimeter fence follow it." }),
+        !padCut.each && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-2 flex flex-wrap gap-1", children: [5, 8, 10, 15].map((n) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", "aria-pressed": padCut.size === n, onClick: () => patch({ size: n }), className: chip(padCut.size === n), children: [
+            n,
+            " ft"
+          ] }, n)) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-2", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumField, { label: "All four corners (ft)", value: padCut.size, min: 0.5, max: maxCut, step: 0.5, onCommit: (v) => patch({ size: v }) }) })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "mt-2 flex items-center gap-2 text-sm text-slate-700", children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: padCut.each, onChange: (e) => patch(e.target.checked ? { each: true, c: [padCut.size, padCut.size, padCut.size, padCut.size] } : { each: false }), className: "h-4 w-4 accent-[#236e45]" }),
+          "Set each corner separately"
+        ] }),
+        padCut.each && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: "In order: northwest, northeast, southeast, southwest (0 keeps a corner square)." }),
+        padCut.each && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "mt-2 flex flex-wrap gap-2", children: names.map((n, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumField, { label: `${n} corner cut (ft, 0 = square)`, value: padCut.c[i], min: 0, max: maxCut, step: 0.5, onCommit: (v) => patch({ c: padCut.c.map((q, j) => j === i ? v : q) }) }, n)) }),
+        conflict && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-2 text-xs text-amber-800", children: "A court or colored area reaches into a cut corner. Move it in, or make the cut smaller." })
+      ] })
+    ] });
+  }
   function DividerPanel({ divider, setDivider, dims, layout, tool, setTool, onCopyZone, onSwapZones, zoneSets, onZoneSport, onZoneCount, onSplitOn, onPreset, north = 0 }) {
     const patch = (c) => setDivider((d) => ({ ...d, ...c }));
     const span = dividerSpan(divider, dims);
@@ -27141,7 +27224,7 @@
     return {
       sport: sport.name,
       sportId,
-      dims: { length: dims.l, width: dims.w, area: Math.round(dims.l * dims.w) },
+      dims: { length: dims.l, width: dims.w, area: Math.round(padArea(dims)), ...hasCuts(dims) ? { cutCorners: padCuts(dims).map((v) => r1(v)) } : {} },
       recommended: rec,
       substrate: { name: BASES[base].name, notes: BASES[base].notes },
       colors: {
@@ -28672,11 +28755,11 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
     const Wd = dims.w;
     const post = rgba("#6b7482");
     const mesh = rgba("#8d97a3", 0.17);
-    const c = [B.W(0, 0), B.W(L, 0), B.W(L, Wd), B.W(0, Wd)];
+    const c = padPoints(dims).map(([x, y]) => B.W(x, y));
     const mid = B.W(L / 2, Wd / 2);
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < c.length; i++) {
       const a = c[i];
-      const b = c[(i + 1) % 4];
+      const b = c[(i + 1) % c.length];
       B.quad("solid", [[a[0], APRON_Y, a[1]], [b[0], APRON_Y, b[1]], [b[0], 0, b[1]], [a[0], 0, a[1]]], rgba("#b6b5ae"), false, [mid[0], -0.1, mid[1]]);
     }
     const run = (x1, z1, x2, z2, h, windscreen, spacing) => {
@@ -29051,8 +29134,9 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
       const dims = it.props.dims;
       B.court(it.cx, it.cz, it.rot || 0, dims.l, dims.w);
       addCourtSolids(B, it.props);
-      const c = [B.W(0, 0), B.W(dims.l, 0), B.W(dims.l, dims.w), B.W(0, dims.w)];
-      quads.push({ pos: new Float32Array(c.flatMap((q) => [q[0], 0, q[1]])), uv: new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]) });
+      const pp = padPoints(dims);
+      const c = pp.map(([x, y]) => B.W(x, y));
+      quads.push({ n: c.length, pos: new Float32Array(c.flatMap((q) => [q[0], 0, q[1]])), uv: new Float32Array(pp.flatMap(([x, y]) => [x / dims.l, y / dims.w])) });
       c.forEach(([x, z]) => {
         minX = Math.min(minX, x);
         maxX = Math.max(maxX, x);
@@ -29214,7 +29298,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
         const pos = own({ buf: buf(q.pos) }).buf;
         const uv = own({ buf: buf(q.uv) }).buf;
         const tex = img ? own({ tex: texture(img) }).tex : null;
-        return { pos, uv, tex };
+        return { pos, uv, tex, n: q.n || 4 };
       });
       ground = null;
       if (groundImg) {
@@ -29247,7 +29331,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
         gl.uniform1f(prog.u.uFogF, cam.fogF);
       }
     };
-    const drawQuad = (cam, pos, uv, tex, light) => {
+    const drawQuad = (cam, pos, uv, tex, light, n = 4) => {
       const p = P.tex;
       common(p, cam);
       gl.uniform1f(p.u.uLight, light);
@@ -29258,7 +29342,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
       attr(p, "aPos", 3, 12, 0);
       gl.bindBuffer(gl.ARRAY_BUFFER, uv);
       attr(p, "aUV", 2, 8, 0);
-      gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+      gl.drawArrays(gl.TRIANGLE_FAN, 0, n);
     };
     const drawMesh = (cam, m, two) => {
       if (!m) return;
@@ -29307,7 +29391,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
       attr(fl, "aPos", 3, 12, 0);
       gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
       if (ground) drawQuad(cam, ground.pos, ground.uv, ground.tex, 0.97);
-      textures.forEach((q) => q.tex && drawQuad(cam, q.pos, q.uv, q.tex, 1));
+      textures.forEach((q) => q.tex && drawQuad(cam, q.pos, q.uv, q.tex, 1, q.n));
       drawMesh(cam, scene.solid, false);
       drawMesh(cam, scene.glow, false);
       if (scene.shadow) {
@@ -30091,7 +30175,12 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
     const [view, setView] = (0, import_react.useState)("Surfaces");
     const [open, setOpen] = (0, import_react.useState)(false);
     const [sportId, setSportId] = (0, import_react.useState)("tennis");
-    const [dims, setDims] = (0, import_react.useState)(SPORTS.tennis.overall);
+    const [dimsBase, setDims] = (0, import_react.useState)(SPORTS.tennis.overall);
+    const [padCut, setPadCut] = (0, import_react.useState)({ on: false, size: 8, each: false, c: [8, 8, 8, 8] });
+    const dims = (0, import_react.useMemo)(() => {
+      const { cut: _drop, ...base2 } = dimsBase;
+      return padCut.on ? { ...base2, cut: padCut.each ? padCut.c : [padCut.size, padCut.size, padCut.size, padCut.size] } : base2;
+    }, [dimsBase, padCut]);
     const growForZones = () => {
       const o = SPORTS[sportId] && SPORTS[sportId].overall;
       if (!o || sportId !== "pickleball") return;
@@ -30230,7 +30319,8 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
     };
     const applyDesign = (d) => {
       setSportId(d.sportId);
-      setDims(d.dims);
+      setDims({ l: d.dims.l, w: d.dims.w });
+      setPadCut(d.dims.cut ? { on: true, size: d.dims.cut[0], each: !d.dims.cut.every((v) => v === d.dims.cut[0]), c: d.dims.cut } : { on: false, size: 8, each: false, c: [8, 8, 8, 8] });
       setLock(d.lock);
       setBase(d.base);
       setMain(d.main);
@@ -30923,6 +31013,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
                         }
                       )
                     ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CutCornersPanel, { padCut, setPadCut, dims, conflict: padCut.on && mainRects(layout, dims, playOf(sportId, dims)).some((m) => rectInCut(dims, m)) }),
                     PAD_SPORTS[sportId] && !divider.on && !convert && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(CourtPadPanel, { sportId, layout, sets, onSet: setCourtPad }),
                     (convert || layout.all.some((c) => c.sport === "tennis")) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "border-t border-slate-200 pt-5", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ConvertPanel, { convert, onToggle: toggleConvert, layout, dims, setDims }) }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "border-t border-slate-200 pt-5", children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(DividerPanel, { divider, setDivider, dims, layout, tool, setTool, onCopyZone: copyZone, onSwapZones: swapZones, zoneSets, onZoneSport: setZoneSport, onZoneCount: setZoneCount, onPreset: presetPbTennis, onSplitOn: growForZones, north }) }),
@@ -31083,7 +31174,7 @@ void main(){ gl_FragColor = vec4(mix(uHor, uTop, smoothstep(0.3, 1.0, vP.y)), 1.
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("dl", { className: "mt-4 flex flex-wrap gap-x-8 gap-y-3 rounded-xl border border-slate-200 bg-white p-4 text-sm shadow-sm", children: [
                   ["Main sport", divider.on ? "Chosen per zone" : convert && sportId === "tennis" ? "Tennis, converted to pickleball" : sport.name],
                   ["Overall surface", `${dims.w} x ${dims.l} ft`],
-                  ["Coated area", `${Math.round(dims.l * dims.w).toLocaleString()} sq ft`],
+                  ["Coated area", `${Math.round(padArea(dims)).toLocaleString()} sq ft`],
                   ["Foundation", BASES[base].name],
                   [
                     "Lines",
