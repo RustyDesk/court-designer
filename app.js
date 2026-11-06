@@ -24021,6 +24021,33 @@
     const pos = dividerPos(d, dims);
     return d.poles.filter((t) => t >= 0 && t <= run).map((t) => d.orient === "across" ? { t, x: pos, y: t } : { t, x: t, y: pos });
   };
+  var dividerSections = (d, dims) => {
+    if (!d || !d.on || d.kind !== "fence" || !Array.isArray(d.sections) || !d.sections.length) return [];
+    const run = dividerRun(d, dims);
+    const stops = [0, ...(d.poles || []).filter((t) => t > 0 && t < run), run];
+    const out = [];
+    for (let sp = 0; sp < stops.length - 1; sp++) {
+      const mine = d.sections.map((q, i) => ({ ...q, i })).filter((q) => Math.min(q.span || 0, stops.length - 2) === sp);
+      if (!mine.length) continue;
+      const lo = stops[sp];
+      const hi = stops[sp + 1];
+      let cur = lo;
+      let rest = mine;
+      if (mine[0].flush) {
+        out.push({ name: mine[0].name, len: mine[0].len, t0: lo, t1: lo + mine[0].len, i: mine[0].i, fits: lo + mine[0].len <= hi + 1e-6 });
+        cur = lo + mine[0].len;
+        rest = mine.slice(1);
+      }
+      const sum = rest.reduce((a, q) => a + q.len, 0);
+      const gap = rest.length ? (hi - cur - sum) / (rest.length + 1) : 0;
+      rest.forEach((q) => {
+        cur += Math.max(0, gap);
+        out.push({ name: q.name, len: q.len, t0: cur, t1: cur + q.len, i: q.i, fits: gap >= -1e-6 });
+        cur += q.len;
+      });
+    }
+    return out.sort((a, b) => a.i - b.i);
+  };
   var zoneRects = (d, dims) => {
     if (!d.on) return [{ key: "all", label: "Whole surface", x: 0, y: 0, l: dims.l, w: dims.w }];
     const p = dividerPos(d, dims);
@@ -24536,7 +24563,8 @@
   function fenceLengths(dims, fence, gates, divider) {
     const perimeter = fence.on ? r1(2 * (dims.l + dims.w)) : 0;
     const gateFt = fence.on ? r1(gates.reduce((s, g) => s + g.width, 0)) : 0;
-    const div = divider && divider.on && divider.kind === "fence" ? r1(dividerRun(divider, dims)) : 0;
+    const secs = dividerSections(divider, dims);
+    const div = divider && divider.on && divider.kind === "fence" ? r1(secs.length ? secs.reduce((a, q) => a + q.len, 0) : dividerRun(divider, dims)) : 0;
     return { perimeter, gates: gateFt, divider: div, total: r1(perimeter - gateFt + div) };
   }
   var dropGate = (pt, dims, snap = null, divider = null) => {
@@ -24828,6 +24856,8 @@
       fence: fence.on ? { height: fence.height, perimeter: run.perimeter, gateOpenings: run.gates, divider: run.divider, total: run.total } : null,
       dividerNet: divider.on && divider.kind === "net" ? r1(dividerRun(divider, dims)) : 0,
       dividerPoles: dividerPoles(divider, dims).length,
+      dividerSections: dividerSections(divider, dims),
+      dividerBlack: !!divider.black,
       gates: live.length,
       gateTypes: Object.entries(widths).map(([k, n]) => {
         const [w, leaf] = k.split("|");
@@ -24867,6 +24897,7 @@
       ]);
     }
     if (q.dividerNet) rows.push(["Divider net", `${q.dividerNet} ft`]);
+    (q.dividerSections || []).forEach((c) => rows.push([`Divider fence section ${c.name}${q.dividerBlack ? ", black surface-mounted chain link" : ""}`, `${r1(c.len)} ft`]));
     if (q.dividerPoles) rows.push(["Light poles on the divider", `${q.dividerPoles}`]);
     q.gateTypes.forEach((g) => rows.push([`Gates, ${g.width} ft ${g.leaf}`, `${g.count}`]));
     if (q.goals) rows.push(["Basketball goals", `${q.goals}`]);
@@ -24979,6 +25010,8 @@
       turnA: oneOf(dv.turnA, ["auto", "0", "90"], "auto"),
       turnB: oneOf(dv.turnB, ["auto", "0", "90"], "auto"),
       ...dv.noLabel === true ? { noLabel: true } : {},
+      ...dv.black === true ? { black: true } : {},
+      ...Array.isArray(dv.sections) && dv.sections.length ? { sections: dv.sections.slice(0, 12).map((q, i) => ({ name: String(q && q.name || String.fromCharCode(65 + i)).slice(0, 3), len: numIn(q && q.len, 1, MAX, 10), span: Math.max(0, Math.min(13, Math.round(Number(q && q.span) || 0))), ...q && q.flush === true ? { flush: true } : {} })) } : {},
       ...Array.isArray(dv.poles) && dv.poles.length ? { poles: dv.poles.filter((t) => typeof t === "number" && isFinite(t) && t >= 0 && t <= MAX).slice(0, 12).sort((a, b) => a - b) } : {}
     };
     let maxUid = 0;
@@ -25492,6 +25525,15 @@
               posts.map((t) => {
                 const p = across ? { x: dv.pos, y: t } : { x: t, y: dv.pos };
                 return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("circle", { cx: p.x, cy: p.y, r: isNet ? 0.5 : 0.65, fill: isNet ? "#e5e7eb" : "#5b6475", stroke: "#0f172a", strokeWidth: "0.15" }, t);
+              }),
+              dividerSections(dv, dims).map((q) => {
+                const e0 = across ? { x: dv.pos, y: q.t0 } : { x: q.t0, y: dv.pos };
+                const e1 = across ? { x: dv.pos, y: q.t1 } : { x: q.t1, y: dv.pos };
+                const mid = across ? { x: dv.pos - 4.5, y: (q.t0 + q.t1) / 2 } : { x: (q.t0 + q.t1) / 2, y: dv.pos - 4.5 };
+                return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("g", { "data-divider-section": q.name, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("line", { x1: e0.x, y1: e0.y, x2: e1.x, y2: e1.y, stroke: q.fits ? "#111827" : "#b91c1c", strokeWidth: "0.9", strokeLinecap: "butt" }),
+                  !dv.noLabel && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Tag, { x: mid.x, y: mid.y, text: `${q.name}  ${fmtLen(q.len)}`, size: 1.7 * k })
+                ] }, `sec${q.i}`);
               }),
               (dv.poles || []).map((t, i) => t >= 0 && t <= run ? [t, i] : null).filter(Boolean).map(([t, i]) => {
                 const c = across ? { x: dv.pos, y: t } : { x: t, y: dv.pos };
@@ -26423,6 +26465,42 @@
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !divider.noLabel, onChange: (e) => patch({ noLabel: e.target.checked ? void 0 : true }), className: "h-4 w-4 accent-[#236e45]" }),
           'Show the fence label on the drawing (for example "4 ft divider fence")'
         ] }),
+        divider.kind === "fence" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mb-3", "data-divider-sections": true, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: "Fence in sections" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-2 text-sm text-slate-700", children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!(divider.sections && divider.sections.length), onChange: (e) => patch(e.target.checked ? { black: true, poles: divider.poles && divider.poles.length ? divider.poles : [r1(dividerRun(divider, dims) * 0.215), r1(dividerRun(divider, dims) * 0.84)], sections: [{ name: "A", len: 18, span: 0, flush: true }, { name: "B", len: 24, span: 1 }, { name: "C", len: 24, span: 1 }, { name: "D", len: 10, span: 2 }] } : { sections: void 0 }), className: "h-4 w-4 accent-[#236e45]" }),
+            "Run the divider as separate sections with openings (starts with A, B, C, D)"
+          ] }),
+          divider.sections && divider.sections.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: "mt-1 text-xs text-slate-500", children: 'Sections in the same span are spaced so every opening is equal. A section marked "flush" starts right at the end of its span, like A against the north fence.' }),
+            divider.sections.map((q, i) => {
+              const stops = (divider.poles || []).length + 1;
+              const names = ["North end", ...(divider.poles || []).map((_, j) => `pole ${j + 1}`), "south end"];
+              return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { className: "mt-2 flex flex-wrap items-end gap-2", "data-section-row": q.name, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(NumField, { label: `Section ${q.name} length (ft)`, value: q.len, min: 1, max: 400, step: 0.5, onCommit: (v) => patch({ sections: divider.sections.map((c, j) => j === i ? { ...c, len: v } : c) }) }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "text-xs text-slate-600", children: [
+                  "Section ",
+                  q.name,
+                  " between",
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("select", { value: Math.min(q.span, stops - 1), onChange: (e) => patch({ sections: divider.sections.map((c, j) => j === i ? { ...c, span: Number(e.target.value) } : c) }), className: "ml-1 rounded border border-slate-300 px-1 py-1 text-sm", children: Array.from({ length: stops }, (_, sp) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: sp, children: `${names[sp]} and ${names[sp + 1]}` }, sp)) })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "flex items-center gap-1 text-xs text-slate-600", children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!q.flush, "aria-label": `Section ${q.name} starts flush`, onChange: (e) => patch({ sections: divider.sections.map((c, j) => j === i ? { ...c, flush: e.target.checked || void 0 } : c) }), className: "h-4 w-4 accent-[#236e45]" }),
+                  "flush at the start"
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { type: "button", className: toolBtn, onClick: () => patch({ sections: divider.sections.length > 1 ? divider.sections.filter((_, j) => j !== i) : void 0 }), children: [
+                  "Remove ",
+                  q.name
+                ] })
+              ] }, i);
+            }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { type: "button", className: `${toolBtn} mt-2`, onClick: () => patch({ sections: [...divider.sections, { name: String.fromCharCode(65 + divider.sections.length), len: 10, span: 0 }] }), children: "Add a section" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("label", { className: "mt-2 flex items-center gap-2 text-sm text-slate-700", children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "checkbox", checked: !!divider.black, onChange: (e) => patch({ black: e.target.checked || void 0 }), className: "h-4 w-4 accent-[#236e45]" }),
+              "Black, surface-mounted chain link"
+            ] })
+          ] })
+        ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("fieldset", { className: "mb-3", "data-divider-poles": true, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("legend", { className: "mb-1 text-sm font-semibold text-[#323c61]", children: "Light poles on the divider" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "flex flex-wrap gap-1", children: [0, 2, 3, 4, 5, 6].map((n) => {
@@ -27076,7 +27154,8 @@
         height: divider.kind === "fence" ? divider.height : null,
         direction: divider.orient === "across" ? "Left and right zones" : "Top and bottom zones",
         positionFt: dividerPos(divider, dims),
-        polesFt: dividerPoles(divider, dims).map((q) => r1(q.t))
+        polesFt: dividerPoles(divider, dims).map((q) => r1(q.t)),
+        sections: dividerSections(divider, dims).map((q) => `${q.name} ${r1(q.len)} ft`)
       } : null,
       north: NORTH_OPTIONS.find((o) => o[0] === north)[1].toLowerCase(),
       lines: groupCourts(layout.courts).map((c) => ({
@@ -28628,6 +28707,17 @@ ${qty ? `<section><h2>Quantities</h2><table>${qty}</table></section>` : ""}
         const len = Math.hypot(a[2] - a[0], a[3] - a[1]);
         const n = Math.max(1, Math.ceil(len / 20));
         for (let i = 0; i <= n; i++) B.cyl(a[0] + (a[2] - a[0]) * i / n, a[1] + (a[3] - a[1]) * i / n, 0, 10.2, 0.15, 0.15, post, { seg: 8 });
+      } else if (dv.sections && dv.sections.length) {
+        const k = dv.orient === "across";
+        const bp = dv.black ? rgba("#111418") : post;
+        const bm = dv.black ? rgba("#15181c", 0.55) : mesh;
+        dividerSections(dv, { l: L, w: Wd }).forEach((q) => {
+          const x1 = k ? dv.pos : q.t0, z1 = k ? q.t0 : dv.pos, x2 = k ? dv.pos : q.t1, z2 = k ? q.t1 : dv.pos;
+          const n = Math.max(1, Math.ceil(q.len / 10));
+          for (let i = 0; i <= n; i++) B.cyl(x1 + (x2 - x1) * i / n, z1 + (z2 - z1) * i / n, 0, dv.height, 0.13, 0.13, bp, { seg: 8 });
+          B.panel(x1, z1, x2, z2, 0.2, dv.height, bm);
+          B.bar(x1, z1, x2, z2, dv.height, 0.2, bp, { cast: false });
+        });
       } else {
         run(a[0], a[1], a[2], a[3], dv.height, null, 10);
       }
